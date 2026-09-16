@@ -1,0 +1,18 @@
+services:
+  app:
+    build:
+      context: .
+      args:
+        # 需要 PDF 导出改为 1（镜像增大约 500MB）
+        INSTALL_CHROMIUM: "0"
+    image: travel-agent:latest
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8000
+    ports:
+      - "8000:8000"
+    # 单机 SQLite + diskcache 均落盘 ./data，升级容器不丢会话与缓存
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

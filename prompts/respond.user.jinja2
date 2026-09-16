@@ -1,0 +1,29 @@
+{% if mode == "plan" %}
+行程概要数据（JSON）：
+{{ plan_json }}
+
+水合提示（如有，需在结尾提醒用户）：
+{{ warnings_text }}
+
+极端天气提醒（如有时自然融入建议）：
+{{ alerts_text }}
+{% if diff_text %}
+本次变更说明：
+{{ diff_text }}
+{% endif %}
+{% if unresolved %}
+以下问题自动修订后仍存在，请在结尾如实提示用户可手动调整：
+{% for item in unresolved %}
+- {{ item }}
+{% endfor %}
+{% endif %}
+{% else %}
+对话记录：
+{{ transcript }}
+
+意图应答素材：
+{{ hint }}
+
+用户问题：
+{{ message }}
+{% endif %}

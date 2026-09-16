@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  lint-typecheck-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: 安装依赖
+        run: uv sync
+
+      - name: Ruff 检查
+        run: uv run ruff check .
+
+      - name: Ruff 格式校验
+        run: uv run ruff format --check .
+
+      - name: mypy 严格类型检查
+        run: uv run mypy
+
+      - name: pytest（含覆盖率）
+        run: uv run pytest --cov --cov-report=term-missing --cov-fail-under=70

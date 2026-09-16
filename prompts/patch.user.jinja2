@@ -1,0 +1,19 @@
+用户修改要求：{{ user_instruction }}
+修改范围：{{ target_scope_text }}
+
+当前行程：
+{{ plan_text }}
+
+候选目录：
+{{ catalog_text }}
+
+天气：
+{{ weather_text }}
+
+参考资料：
+{{ web_text }}
+
+请基于以上信息输出修订后的完整 PlanDraft（JSON）：
+- 未被要求修改的天/项原样保留同样的候选编号和时段
+- 仅在用户要求范围内做调整
+- 保持 N 天完整覆盖

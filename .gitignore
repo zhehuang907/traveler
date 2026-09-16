@@ -1,0 +1,45 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+
+# ===== 虚拟环境 =====
+.venv/
+venv/
+env/
+
+# ===== 测试 / 类型 / 覆盖率 =====
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# ===== 密钥与本地配置（严禁提交 .env） =====
+.env
+.env.*
+!.env.example
+
+# ===== 运行时数据（SQLite / diskcache / 导出文件） =====
+data/*
+!data/.gitkeep
+
+# ===== Playwright =====
+playwright-report/
+/test-results/
+
+# ===== 编辑器 / 系统 =====
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
