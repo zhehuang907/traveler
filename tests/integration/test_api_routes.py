@@ -11,12 +11,11 @@ from typing import Any
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from tests.conftest import TEST_DB_URL
 
 from travel_agent.config import get_settings
 from travel_agent.domain.plan import PlanDay, PlanItem, TripPlan, new_plan_id
 from travel_agent.main import create_app
-
-from tests.conftest import TEST_DB_URL
 
 
 @pytest.fixture
@@ -78,9 +77,7 @@ async def _register_and_login(client: AsyncClient, username: str = "alice") -> N
         "/api/auth/register", json={"username": username, "password": "pass1234"}
     )
     assert res.status_code == 201
-    res = await client.post(
-        "/api/auth/login", json={"username": username, "password": "pass1234"}
-    )
+    res = await client.post("/api/auth/login", json={"username": username, "password": "pass1234"})
     assert res.status_code == 200
 
 
@@ -105,6 +102,7 @@ async def test_share_page(client: AsyncClient) -> None:
 
 # ---------- 认证 ----------
 
+
 async def test_register_login_and_me(client: AsyncClient) -> None:
     await _register_and_login(client)
     res = await client.get("/api/auth/me")
@@ -122,12 +120,8 @@ async def test_register_duplicate(client: AsyncClient) -> None:
 
 
 async def test_login_wrong_password(client: AsyncClient) -> None:
-    await client.post(
-        "/api/auth/register", json={"username": "bob", "password": "pass1234"}
-    )
-    res = await client.post(
-        "/api/auth/login", json={"username": "bob", "password": "wrong123"}
-    )
+    await client.post("/api/auth/register", json={"username": "bob", "password": "pass1234"})
+    res = await client.post("/api/auth/login", json={"username": "bob", "password": "wrong123"})
     assert res.status_code == 401
 
 
@@ -137,6 +131,7 @@ async def test_me_unauthorized(client: AsyncClient) -> None:
 
 
 # ---------- 受保护端点：需登录 ----------
+
 
 async def test_chat_requires_auth(client: AsyncClient) -> None:
     res = await client.post("/api/chat", json={"message": "成都4天"})
@@ -177,6 +172,7 @@ async def test_plan_requires_auth(client: AsyncClient) -> None:
 
 # ---------- share ----------
 
+
 async def test_share_create_and_get(client: AsyncClient) -> None:
     """分享创建 → 读取闭环（登录用户先建行程再分享）。"""
     await _register_and_login(client)
@@ -216,6 +212,7 @@ async def test_pdf_endpoint_returns_503(client: AsyncClient) -> None:
 
 
 # ---------- CRUD ----------
+
 
 async def test_plan_crud_flow(client: AsyncClient) -> None:
     await _register_and_login(client)

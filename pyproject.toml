@@ -33,8 +33,9 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.30",
     "aiosqlite>=0.20",
     # MySQL 异步驱动（纯 Python，兼容 py3.13）+ Alembic 同步驱动 + 密码哈希
+    # pymysql[rsa]：MySQL 8 默认 caching_sha2_password 认证需 cryptography（RSA 加密密码）
     "aiomysql>=0.2.0",
-    "pymysql>=1.1",
+    "pymysql[rsa]>=1.1",
     "bcrypt>=4.1",
     "alembic>=1.13",
     # ---- 能力层 ----
@@ -94,8 +95,8 @@ select = [
 ignore = ["B008", "RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.lint.per-file-ignores]
-# S101 测试允许 assert；S104 测试用例需要 0.0.0.0 字面量
-"tests/**/*.py" = ["S101", "S104"]
+# S101 测试允许 assert；S104 测试用例需要 0.0.0.0 字面量；S106 测试连接本地库的固定口令
+"tests/**/*.py" = ["S101", "S104", "S106"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["travel_agent"]
@@ -114,7 +115,7 @@ namespace_packages = true
 
 # 第三方库缺少 py.typed 时的豁免（按实际安装情况维护）
 [[tool.mypy.overrides]]
-module = ["trafilatura.*", "duckduckgo_search.*", "diskcache.*"]
+module = ["trafilatura.*", "duckduckgo_search.*", "diskcache.*", "pymysql.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

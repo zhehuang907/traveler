@@ -28,7 +28,7 @@ _EXPECTED_TABLES = {
 
 @pytest.fixture(scope="module")
 def mig_db() -> Iterator[str]:
-    _exec(f"SET FOREIGN_KEY_CHECKS=0")
+    _exec("SET FOREIGN_KEY_CHECKS=0")
     _exec(f"DROP DATABASE IF EXISTS `{_MIG_DB}`")
     _exec(f"CREATE DATABASE `{_MIG_DB}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
     yield _SYNC_URL
@@ -59,7 +59,7 @@ def test_upgrade_head_creates_tables(mig_db: str) -> None:
         names = set(inspect(engine).get_table_names())
     finally:
         engine.dispose()
-    assert _EXPECTED_TABLES <= names
+    assert names >= _EXPECTED_TABLES
 
 
 def test_double_upgrade_is_idempotent(mig_db: str) -> None:
@@ -72,4 +72,4 @@ def test_double_upgrade_is_idempotent(mig_db: str) -> None:
         names = set(inspect(engine).get_table_names())
     finally:
         engine.dispose()
-    assert _EXPECTED_TABLES <= names
+    assert names >= _EXPECTED_TABLES

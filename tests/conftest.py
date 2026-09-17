@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import inspect, text
+from sqlalchemy import Connection, inspect, text
 
 from travel_agent.config import Settings, get_settings
 from travel_agent.logging_conf import configure_logging
@@ -72,16 +72,14 @@ async def _truncate_tables(_init_test_db: None) -> AsyncIterator[None]:
 
     engine = create_async_engine(TEST_DB_URL, pool_pre_ping=True)
 
-    def _tables(sync_conn: object) -> list[str]:
+    def _tables(sync_conn: Connection) -> list[str]:
         return list(inspect(sync_conn).get_table_names())
 
     async with engine.begin() as conn:
         await conn.execute(text("SET FOREIGN_KEY_CHECKS=0"))
         tables = await conn.run_sync(_tables)
         for table in tables:
-            if table.startswith("alembic_version"):
-                await conn.execute(text(f"TRUNCATE TABLE `{table}`"))
-            elif table in _BUSINESS_TABLES:
+            if table.startswith("alembic_version") or table in _BUSINESS_TABLES:
                 await conn.execute(text(f"TRUNCATE TABLE `{table}`"))
         await conn.execute(text("SET FOREIGN_KEY_CHECKS=1"))
     await engine.dispose()

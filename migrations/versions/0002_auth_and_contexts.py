@@ -48,12 +48,8 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id", name=op.f("pk_auth_sessions")),
         sa.UniqueConstraint("token_hash", name=op.f("uq_auth_sessions_token_hash")),
     )
-    op.create_index(
-        "ix_auth_sessions_token_hash", "auth_sessions", ["token_hash"], unique=False
-    )
-    op.create_index(
-        "ix_auth_sessions_user_id", "auth_sessions", ["user_id"], unique=False
-    )
+    op.create_index("ix_auth_sessions_token_hash", "auth_sessions", ["token_hash"], unique=False)
+    op.create_index("ix_auth_sessions_user_id", "auth_sessions", ["user_id"], unique=False)
 
     op.create_table(
         "conversation_contexts",
@@ -72,9 +68,7 @@ def upgrade() -> None:
         sa.UniqueConstraint("user_id", "thread_id", name="uq_ctx_user_thread"),
     )
     op.create_index("ix_ctx_user_id", "conversation_contexts", ["user_id"], unique=False)
-    op.create_index(
-        "ix_ctx_thread_id", "conversation_contexts", ["thread_id"], unique=False
-    )
+    op.create_index("ix_ctx_thread_id", "conversation_contexts", ["thread_id"], unique=False)
 
 
 def downgrade() -> None:

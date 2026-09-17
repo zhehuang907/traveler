@@ -75,9 +75,7 @@ def test_per_person_cost_and_serialization_roundtrip() -> None:
     assert payload["total_cost_cny"] == 200.0
     assert payload["per_person_cost_cny"] == 50.0
     # 持久化口径：排除计算字段后可无损回读（extra=forbid）
-    restored = TripPlan.model_validate_json(
-        plan.model_dump_json(exclude_computed_fields=True)
-    )
+    restored = TripPlan.model_validate_json(plan.model_dump_json(exclude_computed_fields=True))
     assert restored.total_cost_cny == 200.0
     assert restored.per_person_cost_cny == 50.0
 

@@ -8,6 +8,21 @@ on:
 jobs:
   lint-typecheck-test:
     runs-on: ubuntu-latest
+    services:
+      # 集成测试依赖 127.0.0.1:3306 的 MySQL（root/1234，见 tests/conftest.py）；
+      # MYSQL_DATABASE 自动建出测试库 travel_agent_test（测试只在库内建表，不建库）
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: "1234"
+          MYSQL_DATABASE: travel_agent_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h127.0.0.1 -uroot -p1234"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
     steps:
       - uses: actions/checkout@v4
 
