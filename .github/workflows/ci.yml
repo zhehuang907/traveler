@@ -35,6 +35,23 @@ jobs:
       - name: 安装依赖
         run: uv sync
 
+      # doctor 集成检查（test_doctor.py::test_main_exit_zero）用默认配置连 travel_agent 库，
+      # 库不存在时 check_mysql 报 FAIL、main 返回 1 导致测试失败，故先建出该库
+      - name: 创建业务数据库（doctor 默认检查库）
+        run: |
+          uv run python - <<'PY'
+          import pymysql
+
+          conn = pymysql.connect(host="127.0.0.1", port=3306, user="root", password="1234")
+          with conn.cursor() as cur:
+              cur.execute(
+                  "CREATE DATABASE IF NOT EXISTS travel_agent "
+                  "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+              )
+          conn.commit()
+          conn.close()
+          PY
+
       - name: Ruff 检查
         run: uv run ruff check .
 
