@@ -147,6 +147,15 @@ class PlanRepository:
         )
         return list(result.scalars())
 
+    async def list_versions(self, plan_id: str) -> Sequence[PlanVersionRow]:
+        """全部版本行（版本历史展示：时间戳与变更来源）。"""
+        result = await self._session.execute(
+            select(PlanVersionRow)
+            .where(PlanVersionRow.plan_id == plan_id)
+            .order_by(PlanVersionRow.version)
+        )
+        return result.scalars().all()
+
     async def get_version(
         self, plan_id: str, version: int, user_id: int | None = None
     ) -> TripPlan | None:

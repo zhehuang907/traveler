@@ -1,6 +1,6 @@
 # 接口文档
 
-健康探针、错误契约、SSE 流式对话、认证、行程 CRUD、分享快照均已实装。本文档为最终契约，前后端共同遵守。
+健康探针、错误契约、SSE 流式对话、认证、行程 CRUD、存档编辑保存、AI 优化、分享快照均已实装。本文档为最终契约，前后端共同遵守。
 
 在线交互式文档：服务启动后访问 `/docs`（Swagger）与 `/redoc`。
 
@@ -168,7 +168,38 @@ SSE 事件格式：`event: <类型>\ndata: <JSON>\n\n`。事件类型与负载�
 
 ### GET /api/plan/{plan_id}/versions
 
-版本列表：`[{version, trigger_snippet, created_at}]`。
+版本列表（按版本号升序）：`[{version, trigger_snippet, created_at}]`。`trigger_snippet` 为可读来源：`手动编辑` / `AI 优化`（下述两个端点写入）或对话修改的差异原因；对话首个版本为 `null`。
+
+### PUT /api/plan/{plan_id} · 存档编辑保存
+
+在已生成存档上做**定向修改**（换酒店、调整游玩项目/时间/费用等），保存为**递增新版本**（历史不删，回滚机制不变）。
+
+```json
+{
+  "plan": { "plan_id": "…", "days": [ { "day_index": 1, "date": "2026-10-01", "items": [ … ] } ] },
+  "reason": "把第2天酒店换成市中心（可选，默认「手动编辑」）"
+}
+```
+
+- 请求 `plan` 为编辑后的**完整** `TripPlan`；可直接回传 `GET /api/plan/{plan_id}` 的结果（计算字段 `total_cost_cny/per_person_cost_cny` 由服务端忽略，无需手工剔除）。
+- **骨架保护**：`destination / start_date / end_date / travelers` 不可经此端点变更（不一致返回 `422 BAD_REQUEST`）；`days` 天数与逐日日期须与骨架严格对齐。
+- **事实防伪**：带 `poi_id` 的条目必须存在于当前版本（未知/缺失 `poi_id` 均 `422`）；坐标与来源链接一律以服务端存量值为准，伪造无效；无 `poi_id` 的自由条目不允许携带坐标/来源。
+- 内容与当前版本完全一致时视为 no-op：不写新版本，返回当前版本号与空 diff。
+- `item_id` 由服务端统一重编号（`d{day}-{seq}`）。
+- 响应 `PlanMutationOut`：`{plan, plan_version, diff, warnings}`（此时 `warnings` 为空数组）。
+
+### POST /api/plan/{plan_id}/optimize · AI 优化（实时最新方案）
+
+对当前存档做**整体重排优化**（可附优化说明），产出最新方案并写新版本——即时生效，可回滚。
+
+```json
+{ "instruction": "住得舒服一点、少走路，晚上安排夜市（可选，≤500 字）" }
+```
+
+- 优化基于「既有行程反构的候选目录 + 按需补充检索」：`instruction` 命中酒店/景点/餐厅等关键词时，服务端会以初始规划同款查询补充同城新候选（共享 24h POI 缓存），用于替换或新增条目。
+- 事实字段（名称/坐标/来源）仍由候选目录水合，防编造纪律不变；天气获取失败降级为无天气优化，不阻断。
+- `warnings`：程序化规则自检（每日时长超限/雨天户外/空白天等）提示，仅供参考不阻塞保存。
+- 错误：未配置 `LLM_API_KEY` → `503 LLM_NOT_CONFIGURED`；LLM 调用失败 → `502 UPSTREAM_ERROR`。
 
 ### POST /api/plan/{plan_id}/rollback
 

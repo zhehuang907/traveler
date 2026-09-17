@@ -1,19 +1,24 @@
-"""API 端点测试：页面渲染、认证、plan CRUD、share、SSE 错误路径。
+"""API 端点测试：页面渲染、认证、plan CRUD、share、SSE 错误路径、手动编辑与 AI 优化。
 
 用 httpx.AsyncClient + FastAPI TestClient，DB 走 MySQL 测试库（conftest 已建表清库）。
 受保护端点需要先注册+登录（HttpOnly Cookie 由 httpx 自动维持）。
 """
 
 from collections.abc import AsyncIterator
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
+from agent_fakes import FakeLLM
 from httpx import ASGITransport, AsyncClient
+from pydantic import SecretStr
 from tests.conftest import TEST_DB_URL
 
+from travel_agent.agent.tools.registry import ToolRegistry
+from travel_agent.api.deps import get_llm, get_tool_context
 from travel_agent.config import get_settings
+from travel_agent.domain.draft import DraftDay, DraftItem, PlanDraft
 from travel_agent.domain.plan import PlanDay, PlanItem, TripPlan, new_plan_id
 from travel_agent.main import create_app
 
@@ -30,7 +35,8 @@ async def client(tmp_path: Path) -> AsyncIterator[AsyncClient]:
             "cache_dir": tmp_path / "cache",
             "checkpoint_db": tmp_path / "cp.db",
             "data_dir": tmp_path,
-            "llm_api_key": "",
+            # 注意：model_copy 跳过校验，SecretStr 字段必须传 SecretStr 保持类型一致
+            "llm_api_key": SecretStr(""),
         }
     )
     cfg_module.get_settings.cache_clear()
@@ -43,6 +49,7 @@ async def client(tmp_path: Path) -> AsyncIterator[AsyncClient]:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
+        c.app = app  # type: ignore[attr-defined]  # 测试通过它覆盖 FastAPI 依赖（LLM/工具替身）
         yield c
     cfg_module.get_settings = original
 
@@ -270,3 +277,219 @@ async def test_plan_access_control(client: AsyncClient) -> None:
     assert res.status_code == 404
     res = await client.delete(f"/api/plan/{plan_id}")
     assert res.status_code == 404
+
+
+# ---------- 阶段八：手动编辑与 AI 优化 ----------
+
+
+async def _create_plan(
+    client: AsyncClient,
+    *,
+    destination: str = "成都",
+    start: str = "2026-10-01",
+    end: str = "2026-10-03",
+    travelers: int = 2,
+    budget_cny: float = 5000,
+) -> str:
+    res = await client.post(
+        "/api/plan",
+        json={
+            "destination": destination,
+            "start_date": start,
+            "end_date": end,
+            "travelers": travelers,
+            "budget_cny": budget_cny,
+        },
+    )
+    assert res.status_code == 200
+    return str(res.json()["plan"]["plan_id"])
+
+
+def _editable_payload(plan: dict[str, Any], *, summary: str = "手动编辑后的行程") -> dict[str, Any]:
+    """基于 GET 的 plan 构造「每天一条活动」的编辑后版本（保留计算字段，模拟前端原样回传）。"""
+    cursor = date.fromisoformat(plan["start_date"])
+    end = date.fromisoformat(plan["end_date"])
+    days: list[dict[str, Any]] = []
+    index = 1
+    while cursor <= end:
+        days.append(
+            {
+                "day_index": index,
+                "date": cursor.isoformat(),
+                "items": [
+                    {
+                        "item_id": f"tmp-{index}",
+                        "title": f"第{index}天自由活动",
+                        "category": "activity",
+                        "duration_min": 120,
+                        "cost_cny": 100,
+                    }
+                ],
+                "note": "",
+            }
+        )
+        cursor += timedelta(days=1)
+        index += 1
+    updated = dict(plan)
+    updated["days"] = days
+    updated["summary"] = summary
+    return updated
+
+
+async def test_plan_manual_edit_creates_version(client: AsyncClient) -> None:
+    await _register_and_login(client)
+    plan_id = await _create_plan(client)
+    plan = (await client.get(f"/api/plan/{plan_id}")).json()["plan"]
+    res = await client.put(f"/api/plan/{plan_id}", json={"plan": _editable_payload(plan)})
+    assert res.status_code == 200
+    data = res.json()
+    assert data["plan_version"] == 2
+    assert len(data["diff"]["added"]) == 3
+    assert data["plan"]["summary"] == "手动编辑后的行程"
+    assert data["plan"]["total_cost_cny"] == 300.0
+
+    res = await client.get(f"/api/plan/{plan_id}/versions")
+    versions = res.json()
+    assert [v["version"] for v in versions] == [1, 2]
+    assert versions[0]["trigger_snippet"] is None
+    assert versions[1]["trigger_snippet"] == "手动编辑"
+    assert versions[1]["created_at"]
+
+    # 幂等：内容无变化重复保存不产生新版本
+    res = await client.put(f"/api/plan/{plan_id}", json={"plan": data["plan"]})
+    assert res.status_code == 200
+    assert res.json()["plan_version"] == 2
+
+
+async def test_plan_manual_edit_rejects_skeleton_change(client: AsyncClient) -> None:
+    await _register_and_login(client)
+    plan_id = await _create_plan(client)
+    plan = (await client.get(f"/api/plan/{plan_id}")).json()["plan"]
+    payload = _editable_payload(plan)
+    payload["travelers"] = 9
+    res = await client.put(f"/api/plan/{plan_id}", json={"plan": payload})
+    assert res.status_code == 422
+    assert "出行人数" in res.json()["error"]["message"]
+
+
+async def test_plan_manual_edit_rejects_unknown_poi(client: AsyncClient) -> None:
+    await _register_and_login(client)
+    plan_id = await _create_plan(client)
+    plan = (await client.get(f"/api/plan/{plan_id}")).json()["plan"]
+    payload = _editable_payload(plan)
+    payload["days"][0]["items"].append(
+        {"item_id": "tmp-x", "title": "手填酒店", "category": "hotel", "duration_min": 60}
+    )
+    res = await client.put(f"/api/plan/{plan_id}", json={"plan": payload})
+    assert res.status_code == 422
+
+
+async def test_plan_manual_edit_access_control(client: AsyncClient) -> None:
+    res = await client.put(
+        "/api/plan/nonexistent", json={"plan": _trip_plan().model_dump(mode="json")}
+    )
+    assert res.status_code == 401
+
+    await _register_and_login(client, "alice")
+    plan_id = await _create_plan(client)
+    plan = (await client.get(f"/api/plan/{plan_id}")).json()["plan"]
+    payload = _editable_payload(plan)
+
+    await client.post("/api/auth/logout")
+    await _register_and_login(client, "bob")
+    res = await client.put(f"/api/plan/{plan_id}", json={"plan": payload})
+    assert res.status_code == 404
+
+
+async def test_plan_optimize_requires_llm_config(client: AsyncClient) -> None:
+    await _register_and_login(client)
+    plan_id = await _create_plan(client)
+    res = await client.post(f"/api/plan/{plan_id}/optimize", json={})
+    assert res.status_code == 503
+    assert res.json()["error"]["code"] == "LLM_NOT_CONFIGURED"
+
+
+def _optimize_draft() -> PlanDraft:
+    """3 天草稿：第 2 天入住候选目录中的酒店（编号 1 来自补充检索）。"""
+    return PlanDraft(
+        days=[
+            DraftDay(
+                date=date(2026, 10, 1),
+                items=[
+                    DraftItem(
+                        title="自由活动",
+                        category="activity",
+                        start_clock="09:00",
+                        end_clock="11:00",
+                        duration_min=120,
+                    )
+                ],
+            ),
+            DraftDay(
+                date=date(2026, 10, 2),
+                items=[
+                    DraftItem(
+                        title="入住酒店",
+                        category="hotel",
+                        candidate_ref=1,
+                        start_clock="14:00",
+                        end_clock="15:00",
+                        duration_min=60,
+                    )
+                ],
+            ),
+            DraftDay(
+                date=date(2026, 10, 3),
+                items=[
+                    DraftItem(
+                        title="自由活动",
+                        category="activity",
+                        start_clock="09:00",
+                        end_clock="11:00",
+                        duration_min=120,
+                    )
+                ],
+            ),
+        ],
+        summary="优化后的行程",
+        tips=["提前订票"],
+    )
+
+
+async def test_plan_optimize_flow_and_rollback(client: AsyncClient, registry: ToolRegistry) -> None:
+    """编辑保存（v2）→ AI 优化（v3，命中真实候选）→ 回滚到 v2（v4）的完整闭环。"""
+    await _register_and_login(client)
+    plan_id = await _create_plan(client)
+    plan = (await client.get(f"/api/plan/{plan_id}")).json()["plan"]
+    res = await client.put(f"/api/plan/{plan_id}", json={"plan": _editable_payload(plan)})
+    assert res.status_code == 200
+
+    app = client.app  # type: ignore[attr-defined]
+    app.dependency_overrides[get_llm] = lambda: FakeLLM(drafts=[_optimize_draft()])
+    app.dependency_overrides[get_tool_context] = lambda: registry
+    try:
+        res = await client.post(
+            f"/api/plan/{plan_id}/optimize", json={"instruction": "换一家酒店住得更舒服"}
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert res.status_code == 200
+    data = res.json()
+    assert data["plan_version"] == 3
+    assert data["plan"]["plan_id"] == plan_id
+    assert data["warnings"] == []
+    day2_titles = [item["title"] for item in data["plan"]["days"][1]["items"]]
+    assert "春熙路商务酒店" in day2_titles  # FakeMaps 酒店候选经水合进入行程
+
+    res = await client.get(f"/api/plan/{plan_id}/versions")
+    versions = res.json()
+    assert [v["version"] for v in versions] == [1, 2, 3]
+    assert versions[2]["trigger_snippet"] == "AI 优化"
+
+    # 回滚到编辑后版本（v2）：酒店消失，版本链按回滚继续增长
+    res = await client.post(f"/api/plan/{plan_id}/rollback", json={"version": 2})
+    assert res.status_code == 200
+    assert res.json()["plan_version"] == 4
+    titles = [item["title"] for day in res.json()["plan"]["days"] for item in day["items"]]
+    assert "春熙路商务酒店" not in titles
+    assert "第2天自由活动" in titles

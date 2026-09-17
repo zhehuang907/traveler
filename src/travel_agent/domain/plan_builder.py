@@ -109,7 +109,7 @@ def hydrate_plan(
         warnings.append(f"草稿仅覆盖 {len(days)}/{expected_days} 天，缺少日期需补齐")
     if dropped:
         warnings.append(f"{len(dropped)} 个无候选来源的条目已剔除：{'、'.join(dropped)}")
-    sources = _collect_sources(days)
+    sources = collect_sources(days)
     plan = TripPlan(
         plan_id=new_plan_id(),
         destination=brief.destination,
@@ -211,7 +211,8 @@ def _free_item(draft_item: DraftItem, day_index: int, seq: int, rainy: bool) -> 
     )
 
 
-def _collect_sources(days: Sequence[PlanDay]) -> list[HttpUrl]:
+def collect_sources(days: Sequence[PlanDay]) -> list[HttpUrl]:
+    """按顺序去重聚合全部条目的来源链接（行程快照的 sources 字段）。"""
     seen: set[str] = set()
     urls: list[HttpUrl] = []
     for day in days:

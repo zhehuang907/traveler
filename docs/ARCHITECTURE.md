@@ -1,6 +1,6 @@
 # 架构设计
 
-> 随阶段推进持续更新（最后更新：阶段七 · 账号与数据层）。
+> 随阶段推进持续更新（最后更新：阶段八 · 存档编辑与 AI 优化）。
 
 ## 1. 分层职责
 
@@ -114,6 +114,15 @@ class TravelState(TypedDict, total=False):
 4. 修改破坏约束（时间填不满/预算爆掉）时先给「影响说明」再追问确认，不静默执行。
 5. 长期偏好写 `user_preference`，后续规划自动生效。
 6. 上下文超阈值做摘要压缩；`brief` 与 `plan` 保留原文。
+
+### 3.1 存档编辑与 AI 优化（阶段八）
+
+已生成的存档支持两条「定向修改 → 实时新版本」路径（[`api/routes_plan.py`](../src/travel_agent/api/routes_plan.py)），回滚机制完全复用：
+
+- **手动编辑 `PUT /api/plan/{plan_id}`**：提交编辑后的完整 `TripPlan`（前端允许改条目标题/时间/时长/费用/备注、增删条目）。领域纯函数 `apply_manual_edit`（[`domain/plan_edit.py`](../src/travel_agent/domain/plan_edit.py)）做骨架保护（目的地/起止日期/人数不可变）、天数与逐日日期对齐校验、`poi_id` 白名单校验、事实字段强制还原（坐标/来源以当前版本存量为准，伪造无效）、自由条目剥离坐标与来源、`item_id` 统一重编号；随后 `compute_diff` + `save_snapshot(trigger_message_id="edit:manual")` 写新版本；内容无变化则不写空版本（no-op）。
+- **AI 优化 `POST /api/plan/{plan_id}/optimize`**：编排在 [`agent/optimize.py`](../src/travel_agent/agent/optimize.py)——`rebuild_catalog_from_plan` 反构候选目录（类目顺序 attraction→restaurant→hotel，无坐标/重复条目跳过）→ `instruction` 命中酒店/景点/餐厅关键词时按初始规划同款查询补充检索（共享 24h POI 缓存）→ 天气（获取失败降级为空，不阻断）→ `render_pair("optimize")` → `llm.aparse(PlanDraft)` → `hydrate_plan` 水合 → `evaluate_plan` 程序化自检（warnings 回传，不阻塞）→ `compute_diff`。LLM 仍只「按编号点菜」，事实字段由水合保证不编造；`plan_id` 保持稳定。
+- 两条路径均以**递增版本号**写 `plan_versions`（`trigger_message_id` 为 `edit:manual` / `edit:optimize`，版本列表显示为「手动编辑」「AI 优化」），保存即成为实时最新方案，且随时可回滚。
+- **依赖注入**：`get_llm`（未配置 Key 返回 `None` → 503）与 `get_tool_context`（ToolRegistry）经 [`api/deps.py`](../src/travel_agent/api/deps.py) 注入，集成测试用 `dependency_overrides` 整体替换为 FakeLLM / 内存替身。
 
 ## 4. 关键 ADR（架构决策记录）
 

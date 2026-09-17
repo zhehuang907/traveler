@@ -8,16 +8,20 @@ from fastapi import Depends, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from travel_agent.agent.tools.registry import ToolRegistry
 from travel_agent.api.errors import AppError, ErrorCode
 from travel_agent.config import Settings
 from travel_agent.config import get_settings as load_settings
 from travel_agent.db.models import AuthSessionRow, UserRow
+from travel_agent.services.llm import StructuredLLM, build_structured_llm
 
 __all__ = [
     "get_current_user",
     "get_db",
+    "get_llm",
     "get_request_id",
     "get_settings",
+    "get_tool_context",
     "hash_token",
 ]
 
@@ -40,6 +44,17 @@ async def get_db(request: Request) -> AsyncIterator[AsyncSession]:
     factory = request.app.state.session_factory
     async with session_scope(factory) as session:
         yield session
+
+
+def get_llm(settings: Settings = Depends(get_settings)) -> StructuredLLM | None:
+    """注入结构化 LLM；未配置 Key 返回 None（由路由给出明确错误）。"""
+    return build_structured_llm(settings)
+
+
+def get_tool_context(request: Request) -> ToolRegistry:
+    """注入工具注册表（缓存/重试/降级链统一装配，测试可整体替换）。"""
+    settings: Settings = request.app.state.settings
+    return ToolRegistry(settings)
 
 
 def hash_token(token: str) -> str:
