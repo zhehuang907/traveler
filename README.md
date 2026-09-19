@@ -60,7 +60,7 @@ flowchart TB
 
 ## 启动操作指南（Windows 本机实测）
 
-前置条件：Python 3.13+、[uv](https://docs.astral.sh/uv/)（uv 会自动拉取匹配的 Python 3.13）与 **本机 MySQL 8**（`127.0.0.1:3306`，root / 1234）。以下命令均在本项目根目录下执行。
+前置条件：Python 3.13+、[uv](https://docs.astral.sh/uv/)（uv 会自动拉取匹配的 Python 3.13）以下命令均在本项目根目录下执行。
 
 ### 第 1 步 · 准备数据库（首次）
 

@@ -209,6 +209,8 @@ def chengdu_brief() -> TravelBrief:
         preferences=["熊猫"],
         dietary=["辣"],
         must_visit=["武侯祠"],
+        guide_ready=True,
+        transport="public",
     )
 
 

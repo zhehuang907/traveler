@@ -85,10 +85,19 @@ class TripPlan(DomainModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def total_cost_cny(self) -> float:
-        """全部条目花费合计（无花费信息的条目按 0 计）。"""
+        """全部条目花费合计。
+
+        住宿条目按「每晚单价 × 住宿晚数」计入（晚数 = 行程天数差，至少 1 晚），
+        其余类别按条目费用直接累加；无花费信息按 0 计。
+        """
+        nights = max((self.end_date - self.start_date).days, 1)
         return round(
             sum(
-                item.cost_cny
+                (
+                    item.cost_cny * nights
+                    if item.category == "hotel" and item.cost_cny is not None
+                    else item.cost_cny
+                )
                 for day in self.days
                 for item in day.items
                 if item.cost_cny is not None

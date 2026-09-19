@@ -1,5 +1,9 @@
 目的地：{{ destination or "（未提供）" }}
 仍缺少的信息：{{ missing_labels | join("、") }}
+{% if preference_hints %}
+想在开始排程前再多了解几点（可一并回答，也可先跳过）：
+{{ preference_hints | join("、") }}
+{% endif %}
 用户原话：{{ message }}
 
-请用一个聚合问题问清以上全部缺失信息。
+请用一个聚合问题问清以上全部缺失信息，并自然带上想多了解的几点（用户跳过也允许开始规划）。

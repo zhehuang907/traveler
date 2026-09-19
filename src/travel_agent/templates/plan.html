@@ -93,6 +93,7 @@
               <h3 class="text-sm font-semibold text-brand-600 flex items-center gap-2 mb-2.5">
                 <span class="w-5 h-5 rounded-full bg-brand-100 grid place-items-center text-[11px]" x-text="day.day_index"></span>
                 <span x-text="day.date"></span>
+                <span class="text-[11px] font-normal text-ink-400 ml-auto" x-show="!editing && dayTotal(day) > 0">本日合计 <span class="font-medium text-ink-600">¥<span x-text="dayTotal(day)"></span></span></span>
               </h3>
 
               <div x-show="!editing" class="ml-3 border-l-2 border-brand-100 pl-4 space-y-2.5">
@@ -234,5 +235,5 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="/static/js/plan.js?v=4"></script>
+<script src="/static/js/plan.js?v=5"></script>
 {% endblock %}

@@ -60,30 +60,68 @@ function shareApp(token) {
     _renderChart() {
       if (!this.snapshot || !window.echarts) return;
       const plan = this.snapshot.plan;
-      const costs = {};
+      const nights = Math.max(
+        (new Date(plan.end_date) - new Date(plan.start_date)) / 86_400_000,
+        1
+      );
+      const itemsByLabel = {};
       plan.days.forEach((day) => {
         day.items.forEach((item) => {
-          if (item.cost_cny) {
-            const label = SHARE_CATEGORY_LABEL[item.category] || item.category;
-            costs[label] = (costs[label] || 0) + item.cost_cny;
-          }
+          if (!item.cost_cny) return;
+          const label = SHARE_CATEGORY_LABEL[item.category] || item.category;
+          const unit = Math.round(item.cost_cny);
+          const total = item.category === 'hotel' ? Math.round(item.cost_cny * nights) : unit;
+          (itemsByLabel[label] = itemsByLabel[label] || []).push({
+            title: item.title,
+            unit,
+            total,
+            day: day.day_index,
+          });
         });
       });
-      const data = Object.entries(costs).map(([name, value]) => ({ name, value: Math.round(value) }));
+      const data = Object.entries(itemsByLabel).map(([name, list]) => ({
+        name,
+        value: list.reduce((sum, it) => sum + it.total, 0),
+        items: list,
+      }));
       if (data.length === 0) return;
       const chart = echarts.init(document.getElementById('cost-chart'));
       chart.setOption({
         color: SHARE_CHART_COLORS,
-        tooltip: { trigger: 'item', formatter: '{b}: ¥{c} ({d}%)' },
+        tooltip: {
+          trigger: 'item',
+          confine: true,
+          formatter(params) {
+            const d = params && params.data;
+            if (!d || !d.items) return params.name;
+            const rows = d.items
+              .map((it) => {
+                const unit = it.unit === it.total ? '' : `（每晚 ¥${it.unit}）`;
+                return `<tr><td>第${it.day}天 ${window.escapeHtml(it.title)}${unit}</td><td style="text-align:right;padding-left:12px;">¥${it.total}</td></tr>`;
+              })
+              .join('');
+            return `<div>${params.name} · ¥${params.value}（${params.percent}%）</div>` +
+              `<table style="margin-top:6px;border-spacing:0;">${rows}</table>`;
+          },
+        },
         legend: { bottom: 0, icon: 'circle', textStyle: { color: '#4e5563', fontSize: 12 } },
         series: [{
           type: 'pie', radius: ['42%', '65%'], center: ['50%', '44%'],
           itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 },
           label: { formatter: '{b}\n¥{c}', fontSize: 11, color: '#4e5563' },
+          emphasis: {
+            scale: true,
+            scaleSize: 6,
+            itemStyle: { shadowBlur: 12, shadowColor: 'rgba(108,92,231,0.35)' },
+          },
           data,
         }],
       });
-      window.addEventListener('resize', () => chart.resize());
+      if (this._chartResizeHandler) {
+        window.removeEventListener('resize', this._chartResizeHandler);
+      }
+      this._chartResizeHandler = () => chart.resize();
+      window.addEventListener('resize', this._chartResizeHandler);
     },
   };
 }

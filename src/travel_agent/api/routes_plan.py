@@ -208,8 +208,8 @@ async def rollback(
     if plan is None:
         raise AppError(ErrorCode.NOT_FOUND, f"版本 {req.version} 不存在", status_code=404)
     thread_id = await repo.get_thread_id(plan_id, user_id=user.id) or "unknown"
-    new_ver = await repo.latest_version_number(plan_id) + 1
-    await repo.save_snapshot(plan, thread_id, new_ver, user_id=user.id)
+    # 内容去重：目标版本快照与当前/历史一致时不堆叠新版本行
+    _, new_ver = await repo.save_snapshot_unique(plan, thread_id, user_id=user.id)
     return PlanOut(plan=plan, plan_version=new_ver, thread_id=thread_id)
 
 
@@ -238,11 +238,9 @@ async def update_plan(
         return PlanMutationOut(plan=current, plan_version=version, diff=PlanDiff())
     diff = compute_diff(current, edited, reason=req.reason or "手动编辑")
     thread_id = await repo.get_thread_id(plan_id, user_id=user.id) or "unknown"
-    new_ver = version + 1
-    await repo.save_snapshot(
+    _, new_ver = await repo.save_snapshot_unique(
         edited,
         thread_id,
-        new_ver,
         diff_json=diff.model_dump_json(),
         trigger_message_id="edit:manual",
         user_id=user.id,
@@ -282,11 +280,9 @@ async def optimize_plan(
     except LLMError as exc:
         raise AppError(ErrorCode.UPSTREAM_ERROR, f"AI 优化失败：{exc}", status_code=502) from exc
     thread_id = await repo.get_thread_id(plan_id, user_id=user.id) or "unknown"
-    new_ver = await repo.latest_version_number(plan_id) + 1
-    await repo.save_snapshot(
+    _, new_ver = await repo.save_snapshot_unique(
         result.plan,
         thread_id,
-        new_ver,
         diff_json=result.diff.model_dump_json(),
         trigger_message_id="edit:optimize",
         user_id=user.id,

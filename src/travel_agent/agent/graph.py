@@ -34,7 +34,14 @@ def route_after_intent(state: TravelState) -> str:
     if intent == "chitchat":
         return "respond"
     brief = state.get("brief")
-    return "search" if brief is not None and brief.is_ready() else "clarify_brief"
+    if brief is None:
+        return "clarify_brief"
+    if not brief.is_ready():
+        return "clarify_brief"
+    if brief.unanswered_preference_labels():
+        # 每次规划都先确认：攻略情况 / 特定项目 / 交通工具（默认公共交通，自驾安排停车）
+        return "clarify_brief"
+    return "search"
 
 
 def route_after_validate(state: TravelState, max_loops: int) -> str:

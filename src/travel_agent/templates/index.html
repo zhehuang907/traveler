@@ -131,7 +131,13 @@
           placeholder="问问小T：成都4天怎么安排？预算5000，爱吃辣…"
           class="w-full px-4 pt-3.5 pb-1 bg-transparent resize-none outline-none text-[15px] leading-6 placeholder:text-ink-300 max-h-40"></textarea>
         <div class="flex items-center justify-between px-3 pb-2.5">
-          <span class="text-[11px] text-ink-300 pl-1">Enter 发送 · Shift+Enter 换行 · 内容由 AI 生成，请核实关键信息</span>
+          <div class="flex items-center gap-1">
+            <label class="cursor-pointer w-9 h-9 rounded-xl text-ink-400 hover:bg-brand-50 hover:text-brand-600 grid place-items-center transition-colors" title="导入行程文档（Word / PDF / 文本），自动解析并规划">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+              <input type="file" class="hidden" accept=".docx,.pdf,.txt,.md" @change="uploadDoc($event)">
+            </label>
+            <span class="text-[11px] text-ink-300 pl-1">Enter 发送 · 可上传文档辅助规划</span>
+          </div>
           <button @click="send()" :disabled="streaming || !input.trim()"
             class="w-9 h-9 rounded-xl bg-brand-500 text-white grid place-items-center hover:bg-brand-600 disabled:bg-gray-200 disabled:text-white transition-colors"
             aria-label="发送">
@@ -225,5 +231,5 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="/static/js/chat.js?v=4"></script>
+<script src="/static/js/chat.js?v=8"></script>
 {% endblock %}

@@ -103,10 +103,15 @@ def test_serde_revives_brief_with_dates() -> None:
 
 def test_render_pair_separates_system_and_user() -> None:
     system, user = render_pair(
-        "clarify", missing_labels=["目的地"], destination="", message="想去玩"
+        "clarify",
+        missing_labels=["目的地"],
+        destination="",
+        message="想去玩",
+        preference_hints=["出行方式（公共交通/自驾/步行，建议公共交通）"],
     )
     assert "一个" in system
     assert "目的地" in user
+    assert "出行方式" in user
     assert "{{" not in system and "{%" not in user
 
 
@@ -120,6 +125,8 @@ def test_render_pair_compose_context() -> None:
         weather_text="晴",
         catalog_text="#1 武侯祠",
         web_text="- 贴士",
+        transport_guide="用户默认公共交通出行。",
     )
     assert "4 天" in system
     assert "武侯祠" in user
+    assert "公共交通" in user

@@ -69,3 +69,51 @@ def test_optional_lists_default_independent() -> None:
     assert first.preferences == []
     first.preferences.append("博物馆")
     assert second.preferences == []
+
+
+def _ready_brief() -> TravelBrief:
+    return TravelBrief(
+        destination="成都",
+        start_date=date(2026, 10, 1),
+        end_date=date(2026, 10, 4),
+        travelers=2,
+        budget_cny=5000,
+        pace="moderate",
+    )
+
+
+def test_unanswered_preference_labels_all_missing() -> None:
+    labels = _ready_brief().unanswered_preference_labels()
+    assert "是否已经做过攻略（有想去的具体地方）" in labels
+    assert "有没有特别想去的景点或游玩项目" in labels
+    assert "出行方式（公共交通/自驾/步行，建议公共交通）" in labels
+
+
+def test_unanswered_preference_labels_partial() -> None:
+    brief = _ready_brief()
+    # 已做过攻略 + 有必去项目 + 已选出行方式 → 无需追问
+    answered = brief.model_copy(
+        update={"guide_ready": True, "must_visit": ["武侯祠"], "transport": "public"}
+    )
+    assert answered.unanswered_preference_labels() == []
+    # 仅交通未答 → 只问交通
+    transport_only = brief.model_copy(update={"guide_ready": False, "must_visit": ["武侯祠"]})
+    assert transport_only.unanswered_preference_labels() == [
+        "出行方式（公共交通/自驾/步行，建议公共交通）"
+    ]
+
+
+def test_transport_guide_self_driving_mentions_parking() -> None:
+    guide = _ready_brief().model_copy(update={"transport": "self_driving"})
+    text = guide.transport_guide_text()
+    assert "自驾" in text
+    assert "方便停车" in text
+    assert "停车建议" in text
+
+
+def test_transport_guide_public_default() -> None:
+    # 未指定出行方式 → 默认公共交通编排
+    text = _ready_brief().transport_guide_text()
+    assert "公共交通" in text
+    assert "地铁" in text
+    assert "步行" not in text

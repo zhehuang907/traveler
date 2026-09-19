@@ -133,6 +133,58 @@ class PlanRepository:
         )
         return row
 
+    async def save_snapshot_unique(
+        self,
+        plan: TripPlan,
+        thread_id: str,
+        *,
+        diff_json: str | None = None,
+        trigger_message_id: str | None = None,
+        user_id: int | None = None,
+    ) -> tuple[PlanRow, int]:
+        """内容级去重写入：快照与历史任一版本一致则不再新增版本行。
+
+        回滚/编辑/AI 优化都走这里，避免反复回滚造成重复版本堆积；
+        diff_json / trigger_message_id 仅在真正新增版本时写入。
+        返回 (行程行, 实际生效版本号)——去重命中时返回历史版本号。
+        """
+        snapshot = plan.model_dump_json(exclude_computed_fields=True)
+        result = await self._session.execute(
+            select(PlanVersionRow.version).where(
+                PlanVersionRow.plan_id == plan.plan_id,
+                PlanVersionRow.snapshot_json == snapshot,
+            )
+        )
+        existing = result.scalars().first()
+        if existing is not None:
+            row = await self._session.get(PlanRow, plan.plan_id)
+            if row is not None:
+                row.snapshot_json = snapshot
+                row.budget_cny = plan.budget_cny
+                row.updated_at = datetime.now(UTC)
+                return row, int(existing)
+            # 主行缺失（历史版本残留而当前行丢失的异常数据）：回退为新增版本
+            version = await self.latest_version_number(plan.plan_id) + 1
+            row = await self.save_snapshot(
+                plan,
+                thread_id,
+                version,
+                diff_json=diff_json,
+                trigger_message_id=trigger_message_id,
+                user_id=user_id,
+            )
+            return row, version
+        version = await self.latest_version_number(plan.plan_id) + 1
+        row = await self.save_snapshot(
+            plan,
+            thread_id,
+            version,
+            diff_json=diff_json,
+            trigger_message_id=trigger_message_id,
+            user_id=user_id,
+        )
+        return row, version
+
     async def get_plan(self, plan_id: str, user_id: int | None = None) -> TripPlan | None:
         if user_id is not None and not await self._owns(plan_id, user_id):
             return None

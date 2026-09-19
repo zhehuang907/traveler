@@ -134,6 +134,35 @@ function chatApp() {
       if (res.ok || res.status === 404) await this.loadPlans();
     },
 
+    async uploadDoc(e) {
+      const file = e.target && e.target.files && e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+      if (this.streaming) { alert('小T正在回答中，请稍后再上传'); return; }
+      const form = new FormData();
+      form.append('file', file);
+      try {
+        const res = await fetch('/api/chat/upload', {
+          method: 'POST',
+          body: form,
+          credentials: 'same-origin',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          alert((data.error && data.error.message) || '文件解析失败，请检查格式');
+          return;
+        }
+        // 提取出的行程要点（非全文）直接作为本轮规划请求，随对话流生成行程
+        this.input = '我从文档（' + (data.filename || file.name) + '）中提炼了以下行程要点，'
+          + '请基于这些要点帮我规划行程：\n\n【提炼要点】\n'
+          + (data.text || '')
+          + '\n【要点结束】';
+        this.send();
+      } catch {
+        alert('网络错误，文件上传失败');
+      }
+    },
+
     useSuggestion(text) {
       this.input = text;
       this.send();

@@ -9,15 +9,16 @@ import uuid
 from collections.abc import AsyncIterator
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from travel_agent.api.deps import get_current_user, get_settings
+from travel_agent.api.deps import get_current_user, get_llm, get_settings
 from travel_agent.api.errors import AppError, ErrorCode
 from travel_agent.api.sse import sse_stream
 from travel_agent.config import Settings
 from travel_agent.db.models import UserRow
+from travel_agent.services.llm import StructuredLLM
 
 __all__ = ["router"]
 
@@ -26,7 +27,8 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 class ChatRequest(BaseModel):
     thread_id: str | None = None
-    message: str = Field(min_length=1, max_length=2000)
+    # 上限放宽以容纳聊天窗内上传的文档内容（见 POST /api/chat/upload）
+    message: str = Field(min_length=1, max_length=13_000)
     client_ts: datetime | None = None
 
 
@@ -34,6 +36,12 @@ class MessageOut(BaseModel):
     role: str
     content: str
     created_at: datetime | None = None
+
+
+class DocDigest(BaseModel):
+    """文档提炼结果：仅返回与行程规划相关的要点，不携带全文。"""
+
+    text: str
 
 
 @router.post("")
@@ -161,6 +169,44 @@ async def _persist(
                 )
     except Exception:
         log.exception("chat_persist_failed", thread_id=thread_id)
+
+
+@router.post("/upload")
+async def upload_document(
+    file: UploadFile = File(...),
+    user: UserRow = Depends(get_current_user),
+    llm: StructuredLLM | None = Depends(get_llm),
+) -> dict[str, str]:
+    """上传行程文档（Word/PDF/文本）：解析后仅提炼行程要点，不返回全文。"""
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise AppError(ErrorCode.BAD_REQUEST, "文件不能超过 5MB", status_code=413)
+    from travel_agent.services.plan_import import ImportError_, extract_text
+
+    try:
+        text = extract_text(file.filename or "", content)
+    except ImportError_ as exc:
+        raise AppError(ErrorCode.BAD_REQUEST, str(exc), status_code=400) from exc
+    if not text.strip():
+        raise AppError(
+            ErrorCode.BAD_REQUEST,
+            "文件中没有可读文本（可能是扫描件，请改用文字版）",
+            status_code=400,
+        )
+    if llm is None:
+        raise AppError(
+            ErrorCode.LLM_NOT_CONFIGURED,
+            "未配置 LLM_API_KEY，无法提炼文档内容",
+            status_code=503,
+        )
+    # 只提炼与行程规划相关的要点，避免把整份文档灌入对话
+    from travel_agent.agent.prompts import render_pair
+
+    system, user_prompt = render_pair(
+        "digest", filename=file.filename or "", document=text[:12_000]
+    )
+    digest = await llm.aparse(DocDigest, system=system, user=user_prompt)
+    return {"filename": file.filename or "", "text": digest.text}
 
 
 @router.get("/{thread_id}/history", response_model=list[MessageOut])

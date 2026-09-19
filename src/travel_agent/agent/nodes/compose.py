@@ -24,6 +24,7 @@ def planning_context(state: TravelState, settings: Settings) -> dict[str, Any]:
         "weather_text": format_weather(state.get("weather", {})),
         "catalog_text": format_catalog(catalog),
         "web_text": format_web(state.get("web_results", [])),
+        "transport_guide": brief.transport_guide_text(),
         "_catalog": catalog,
     }
 

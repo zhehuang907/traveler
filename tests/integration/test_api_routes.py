@@ -17,6 +17,7 @@ from tests.conftest import TEST_DB_URL
 
 from travel_agent.agent.tools.registry import ToolRegistry
 from travel_agent.api.deps import get_llm, get_tool_context
+from travel_agent.api.routes_chat import DocDigest
 from travel_agent.config import get_settings
 from travel_agent.domain.draft import DraftDay, DraftItem, PlanDraft
 from travel_agent.domain.plan import PlanDay, PlanItem, TripPlan, new_plan_id
@@ -486,10 +487,82 @@ async def test_plan_optimize_flow_and_rollback(client: AsyncClient, registry: To
     assert [v["version"] for v in versions] == [1, 2, 3]
     assert versions[2]["trigger_snippet"] == "AI 优化"
 
-    # 回滚到编辑后版本（v2）：酒店消失，版本链按回滚继续增长
+    # 回滚到编辑后版本（v2）：酒店消失；内容与 v2 一致，命中内容去重不再堆叠版本行
     res = await client.post(f"/api/plan/{plan_id}/rollback", json={"version": 2})
     assert res.status_code == 200
-    assert res.json()["plan_version"] == 4
+    assert res.json()["plan_version"] == 2
     titles = [item["title"] for day in res.json()["plan"]["days"] for item in day["items"]]
     assert "春熙路商务酒店" not in titles
     assert "第2天自由活动" in titles
+
+
+# ---------- 聊天窗口文档导入 ----------
+
+
+class _DigestLLM:
+    """upload 端点替身：aparse 固定返回预置提炼要点。"""
+
+    def __init__(self, text: str = "目的地：昆明\n预算：3000元") -> None:
+        self._text = text
+        self.user_prompt: str | None = None
+
+    async def aparse(self, schema: type[Any], *, system: str, user: str) -> Any:
+        self.user_prompt = user
+        assert schema is DocDigest
+        return schema(text=self._text)
+
+
+async def test_chat_upload_requires_auth(client: AsyncClient) -> None:
+    res = await client.post(
+        "/api/chat/upload", files={"file": ("trip.txt", b"Day1", "text/plain")}
+    )
+    assert res.status_code == 401
+
+
+async def test_chat_upload_returns_digest_text(client: AsyncClient) -> None:
+    await _register_and_login(client)
+    app = client.app  # type: ignore[attr-defined]
+    digest = _DigestLLM(text="目的地：昆明\n预算：3000元\n必去：滇池")
+    app.dependency_overrides[get_llm] = lambda: digest
+    try:
+        res = await client.post(
+            "/api/chat/upload",
+            files={"file": ("攻略.txt", "Day1: 滇池\n预算 3000".encode(), "text/plain")},
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert res.status_code == 200
+    data = res.json()
+    assert data["filename"] == "攻略.txt"
+    assert data["text"] == "目的地：昆明\n预算：3000元\n必去：滇池"
+    # LLM 收到的 user 消息包含文档原文（供提炼），不含返回全文之外的拼接
+    assert digest.user_prompt is not None
+    assert "滇池" in digest.user_prompt
+
+
+async def test_chat_upload_requires_llm(client: AsyncClient) -> None:
+    # 未配置 LLM_API_KEY → get_llm 返回 None → 503
+    await _register_and_login(client)
+    res = await client.post(
+        "/api/chat/upload", files={"file": ("trip.txt", b"Day1", "text/plain")}
+    )
+    assert res.status_code == 503
+    assert res.json()["error"]["code"] == "LLM_NOT_CONFIGURED"
+
+
+async def test_chat_upload_rejects_unsupported_format(client: AsyncClient) -> None:
+    await _register_and_login(client)
+    res = await client.post(
+        "/api/chat/upload", files={"file": ("trip.exe", b"payload", "application/octet-stream")}
+    )
+    assert res.status_code == 400
+    assert res.json()["error"]["code"] == "BAD_REQUEST"
+
+
+async def test_chat_upload_rejects_unreadable_content(client: AsyncClient) -> None:
+    await _register_and_login(client)
+    res = await client.post(
+        "/api/chat/upload", files={"file": ("scan.pdf", b"not-a-real-pdf", "application/pdf")}
+    )
+    assert res.status_code == 400
+    assert "PDF" in res.json()["error"]["message"]

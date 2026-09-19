@@ -15,6 +15,9 @@ Pace = Literal["relaxed", "moderate", "packed"]
 
 _PACE_LABEL = {"relaxed": "轻松", "moderate": "适中", "packed": "紧凑"}
 
+# 出行方式：public 公共交通（默认建议）/ self_driving 自驾 / walking 步行 / mixed 混用
+TransportMode = Literal["public", "self_driving", "walking", "mixed"]
+
 
 class TravelBrief(DomainModel):
     """一次规划请求的结构化槽位。"""
@@ -30,6 +33,9 @@ class TravelBrief(DomainModel):
     dietary: list[str] = Field(default_factory=list)
     must_visit: list[str] = Field(default_factory=list)
     avoid: list[str] = Field(default_factory=list)
+    # 规划前想了解的偏好（缺失会并入一次聚合追问；不阻塞必填判定）
+    guide_ready: bool | None = None  # 是否已做过攻略/有草稿想法
+    transport: TransportMode | None = None  # 出行方式，未提及时默认建议公共交通
 
     @field_validator("destination", mode="before")
     @classmethod
@@ -82,3 +88,34 @@ class TravelBrief(DomainModel):
     @property
     def pace_label(self) -> str | None:
         return _PACE_LABEL.get(self.pace) if self.pace else None
+
+    def unanswered_preference_labels(self) -> list[str]:
+        """规划前待了解的偏好中文说明（缺失才问；不阻塞必填判定）。
+
+        每次规划时都会聚合询问：是否做过攻略、有没有特定游玩项目、
+        交通工具（建议公共交通；自驾会安排方便停车的目的地）。
+        """
+        labels: list[str] = []
+        if self.guide_ready is None:
+            labels.append("是否已经做过攻略（有想去的具体地方）")
+        if not self.must_visit:
+            labels.append("有没有特别想去的景点或游玩项目")
+        if self.transport is None:
+            labels.append("出行方式（公共交通/自驾/步行，建议公共交通）")
+        return labels
+
+    def transport_guide_text(self) -> str:
+        """行程编排的交通安排指引（未指定时按公共交通默认编排）。"""
+        if self.transport == "self_driving":
+            return (
+                "用户自驾出行：目的地优先选方便停车的地方并注明停车建议，"
+                "跨区域尽量顺路，长时间驾车安排休息点。"
+            )
+        if self.transport == "walking":
+            return "用户步行出行：各条目控制在步行可达范围内，避免跨区长距离移动。"
+        if self.transport == "mixed":
+            return "用户多种交通混用：逐条给出最顺路的交通方式与换乘提醒。"
+        return (
+            "用户默认公共交通出行：目的地优先安排地铁或公交直达的地点并注明最近站点，"
+            "远端换乘留足时间。"
+        )

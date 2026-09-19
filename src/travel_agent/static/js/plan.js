@@ -293,6 +293,20 @@ function planApp(planId) {
       return CATEGORY_LABEL[item.category] || item.category;
     },
 
+    dayTotal(day) {
+      if (!day || !day.items) return 0;
+      const nights = Math.max(
+        (new Date(this.plan.end_date) - new Date(this.plan.start_date)) / 86_400_000,
+        1
+      );
+      return Math.round(
+        day.items.reduce((sum, item) => {
+          if (!item.cost_cny) return sum;
+          return sum + (item.category === 'hotel' ? item.cost_cny * nights : item.cost_cny);
+        }, 0)
+      );
+    },
+
     /* ---------- 地图 / 图表 ---------- */
 
     _renderMap() {
@@ -330,30 +344,68 @@ function planApp(planId) {
         this._chart.dispose();
         this._chart = null;
       }
-      const costs = {};
+      const nights = Math.max(
+        (new Date(this.plan.end_date) - new Date(this.plan.start_date)) / 86_400_000,
+        1
+      );
+      const itemsByLabel = {};
       this.plan.days.forEach((day) => {
         day.items.forEach((item) => {
-          if (item.cost_cny) {
-            const label = CATEGORY_LABEL[item.category] || item.category;
-            costs[label] = (costs[label] || 0) + item.cost_cny;
-          }
+          if (!item.cost_cny) return;
+          const label = CATEGORY_LABEL[item.category] || item.category;
+          const base = item.category === 'hotel' ? Math.round(item.cost_cny) : Math.round(item.cost_cny);
+          const total = item.category === 'hotel' ? Math.round(item.cost_cny * nights) : Math.round(item.cost_cny);
+          (itemsByLabel[label] = itemsByLabel[label] || []).push({
+            title: item.title,
+            unit: base,
+            total,
+            day: day.day_index,
+          });
         });
       });
-      const data = Object.entries(costs).map(([name, value]) => ({ name, value: Math.round(value) }));
+      const data = Object.entries(itemsByLabel).map(([name, list]) => ({
+        name,
+        value: list.reduce((sum, it) => sum + it.total, 0),
+        items: list,
+      }));
       const chart = echarts.init(document.getElementById('cost-chart'));
       this._chart = chart;
       chart.setOption({
         color: CHART_COLORS,
-        tooltip: { trigger: 'item', formatter: '{b}: ¥{c} ({d}%)' },
+        tooltip: {
+          trigger: 'item',
+          confine: true,
+          formatter(params) {
+            const d = params && params.data;
+            if (!d || !d.items) return params.name;
+            const rows = d.items
+              .map((it) => {
+                const unit = it.unit === it.total ? '' : `（每晚 ¥${it.unit}）`;
+                return `<tr><td>第${it.day}天 ${escapeHtml(it.title)}${unit}</td><td style="text-align:right;padding-left:12px;">¥${it.total}</td></tr>`;
+              })
+              .join('');
+            return `<div>${params.name} · ¥${params.value}（${params.percent}%）</div>` +
+              `<table style="margin-top:6px;border-spacing:0;">${rows}</table>`;
+          },
+        },
         legend: { bottom: 0, icon: 'circle', textStyle: { color: '#4e5563', fontSize: 12 } },
         series: [{
           type: 'pie', radius: ['42%', '65%'], center: ['50%', '44%'],
           itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 },
           label: { formatter: '{b}\n¥{c}', fontSize: 11, color: '#4e5563' },
+          emphasis: {
+            scale: true,
+            scaleSize: 6,
+            itemStyle: { shadowBlur: 12, shadowColor: 'rgba(108,92,231,0.35)' },
+          },
           data,
         }],
       });
-      window.addEventListener('resize', () => chart.resize());
+      if (this._chartResizeHandler) {
+        window.removeEventListener('resize', this._chartResizeHandler);
+      }
+      this._chartResizeHandler = () => chart.resize();
+      window.addEventListener('resize', this._chartResizeHandler);
     },
 
     _escape(s) {
