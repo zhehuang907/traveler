@@ -52,13 +52,14 @@ class TravelBrief(DomainModel):
         """纯空白目的地归一为空串，使必填槽位判定能识别为缺失。"""
         return value.strip() if isinstance(value, str) else value
 
+    # 硬性必需：目的地 + 时间 + 人数 + 预算。节奏/偏好缺失不阻塞规划，
+    # 编排时按适中节奏与公共交通（或用户提供的值）自动兜底。
     _REQUIRED_SLOTS: ClassVar[tuple[str, ...]] = (
         "destination",
         "start_date",
         "end_date",
         "travelers",
         "budget_cny",
-        "pace",
     )
     _SLOT_LABELS: ClassVar[dict[str, str]] = {
         "destination": "目的地",
@@ -66,7 +67,6 @@ class TravelBrief(DomainModel):
         "end_date": "返程日期",
         "travelers": "出行人数",
         "budget_cny": "预算（人民币）",
-        "pace": "节奏偏好（轻松/适中/紧凑）",
     }
 
     def missing_slots(self) -> list[str]:
@@ -97,21 +97,6 @@ class TravelBrief(DomainModel):
     @property
     def pace_label(self) -> str | None:
         return _PACE_LABEL.get(self.pace) if self.pace else None
-
-    def unanswered_preference_labels(self) -> list[str]:
-        """规划前待了解的偏好中文说明（缺失才问；不阻塞必填判定）。
-
-        每次规划时都会聚合询问：是否做过攻略、有没有特定游玩项目、
-        交通工具（建议公共交通；自驾会安排方便停车的目的地）。
-        """
-        labels: list[str] = []
-        if self.guide_ready is None:
-            labels.append("是否已经做过攻略（有想去的具体地方）")
-        if not self.must_visit:
-            labels.append("有没有特别想去的景点或游玩项目")
-        if self.transport is None:
-            labels.append("出行方式（公共交通/自驾/步行，建议公共交通）")
-        return labels
 
     def transport_guide_text(self) -> str:
         """行程编排的交通安排指引（未指定时按公共交通默认编排）。"""

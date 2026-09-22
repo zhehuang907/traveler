@@ -52,11 +52,11 @@ def test_route_after_intent_branches() -> None:
     assert route_after_intent({"intent": "new_plan", "brief": ready}) == "search"
     partial = TravelBrief(destination="成都")
     assert route_after_intent({"intent": "new_plan", "brief": partial}) == "clarify_brief"
-    # 必填齐备但规划前偏好未答复（攻略/特定项目/出行方式）→ 先聚合确认一次
+    # 必填齐备时偏好未答复（攻略/特定项目/出行方式）不再追问 → 直接进入检索编排
     preferences_unanswered = ready.model_copy(update={"guide_ready": None, "transport": None})
     assert (
         route_after_intent({"intent": "new_plan", "brief": preferences_unanswered})
-        == "clarify_brief"
+        == "search"
     )
     assert route_after_intent({"intent": "chitchat"}) == "respond"
     assert route_after_intent({"intent": "ask_info"}) == "answer_info"

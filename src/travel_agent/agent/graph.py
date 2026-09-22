@@ -38,9 +38,7 @@ def route_after_intent(state: TravelState) -> str:
         return "clarify_brief"
     if not brief.is_ready():
         return "clarify_brief"
-    if brief.unanswered_preference_labels():
-        # 每次规划都先确认：攻略情况 / 特定项目 / 交通工具（默认公共交通，自驾安排停车）
-        return "clarify_brief"
+    # 节奏/攻略/景点/交通等偏好不再主动追问，缺失项由编排兜底（适中节奏、公共交通）
     return "search"
 
 

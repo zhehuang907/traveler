@@ -107,12 +107,13 @@ async def test_parse_intent_merges_keeps_existing_slots() -> None:
 
 
 async def test_parse_intent_defaults_public_transport_on_plan() -> None:
-    """规划意图且未指定出行方式 → 默认公共交通（自驾需用户明确表达）。"""
+    """规划意图且未指定出行方式/节奏 → 默认公共交通与适中节奏（自驾/特殊节奏需明确表达）。"""
     llm = FakeLLM(intent=IntentResult(intent="new_plan", brief=TravelBrief(destination="南京")))
     state: TravelState = {"messages": [HumanMessage(content="去南京玩三天")]}
     result = await parse_intent(state, llm=llm)
     merged = cast(TravelBrief, result["brief"])
     assert merged.transport == "public"
+    assert merged.pace == "moderate"
 
     # 非规划意图不擅自默认
     llm_chitchat = FakeLLM(
@@ -121,6 +122,7 @@ async def test_parse_intent_defaults_public_transport_on_plan() -> None:
     result = await parse_intent(state, llm=llm_chitchat)
     merged = cast(TravelBrief, result["brief"])
     assert merged.transport is None
+    assert merged.pace is None
 
 
 async def test_clarify_node_asks_one_question() -> None:

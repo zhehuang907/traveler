@@ -16,7 +16,6 @@ def test_default_brief_all_required_missing() -> None:
         "end_date",
         "travelers",
         "budget_cny",
-        "pace",
     ]
     assert "目的地" in brief.missing_slot_labels()
     assert not brief.is_ready()
@@ -82,25 +81,18 @@ def _ready_brief() -> TravelBrief:
     )
 
 
-def test_unanswered_preference_labels_all_missing() -> None:
-    labels = _ready_brief().unanswered_preference_labels()
-    assert "是否已经做过攻略（有想去的具体地方）" in labels
-    assert "有没有特别想去的景点或游玩项目" in labels
-    assert "出行方式（公共交通/自驾/步行，建议公共交通）" in labels
-
-
-def test_unanswered_preference_labels_partial() -> None:
-    brief = _ready_brief()
-    # 已做过攻略 + 有必去项目 + 已选出行方式 → 无需追问
-    answered = brief.model_copy(
-        update={"guide_ready": True, "must_visit": ["武侯祠"], "transport": "public"}
+def test_ready_brief_without_pace_is_ready() -> None:
+    """节奏缺失不再阻塞规划（编排按适中兜底），仅时间/人数/预算/目的地必需。"""
+    brief = TravelBrief(
+        destination="成都",
+        start_date=date(2026, 10, 1),
+        end_date=date(2026, 10, 4),
+        travelers=2,
+        budget_cny=5000,
     )
-    assert answered.unanswered_preference_labels() == []
-    # 仅交通未答 → 只问交通
-    transport_only = brief.model_copy(update={"guide_ready": False, "must_visit": ["武侯祠"]})
-    assert transport_only.unanswered_preference_labels() == [
-        "出行方式（公共交通/自驾/步行，建议公共交通）"
-    ]
+    assert brief.missing_slots() == []
+    assert brief.is_ready()
+    assert brief.pace is None  # 未指定节奏 → 不追问，编排兜底
 
 
 def test_transport_guide_self_driving_mentions_parking() -> None:

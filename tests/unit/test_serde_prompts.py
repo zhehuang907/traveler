@@ -107,11 +107,9 @@ def test_render_pair_separates_system_and_user() -> None:
         missing_labels=["目的地"],
         destination="",
         message="想去玩",
-        preference_hints=["出行方式（公共交通/自驾/步行，建议公共交通）"],
     )
     assert "一个" in system
     assert "目的地" in user
-    assert "出行方式" in user
     assert "{{" not in system and "{%" not in user
 
 

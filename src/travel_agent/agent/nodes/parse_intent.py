@@ -32,9 +32,16 @@ async def parse_intent(state: TravelState, *, llm: StructuredLLM) -> dict[str, o
     )
     # 确定性合并兜底：LLM 漏掉/置空的历史槽位用已有值保住，只会越滚越全
     merged = existing.merge(result.brief)
-    # 规划意图下未指定出行方式 → 按业务规则默认公共交通（自驾需用户明确表达）
-    if result.intent == "new_plan" and merged.transport is None:
-        merged = merged.model_copy(update={"transport": "public"})
+    # 规划意图下的轻量默认值：未指定出行方式 → 公共交通（自驾需用户明确表达）；
+    # 未指定节奏 → 适中（用户后续可随时调整）。
+    if result.intent == "new_plan":
+        defaults: dict[str, object] = {}
+        if merged.transport is None:
+            defaults["transport"] = "public"
+        if merged.pace is None:
+            defaults["pace"] = "moderate"
+        if defaults:
+            merged = merged.model_copy(update=defaults)
     return {
         "intent": result.intent,
         "brief": merged,

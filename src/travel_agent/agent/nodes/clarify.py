@@ -10,13 +10,11 @@ from travel_agent.services.llm import StructuredLLM
 async def clarify_brief(state: TravelState, *, llm: StructuredLLM) -> dict[str, object]:
     brief = state.get("brief")
     labels = brief.missing_slot_labels() if brief else []
-    preference_hints = brief.unanswered_preference_labels() if brief else []
     summary = brief.summary_text() if brief else "（暂无）"
     message = _last_human_text(state)
     system, user = render_pair(
         "clarify",
         missing_labels=labels,
-        preference_hints=preference_hints,
         destination=brief.destination if brief else "",
         summary=summary,
         message=message,
