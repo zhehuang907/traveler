@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block title %}行程详情 · 小T{% endblock %}
 {% block head %}
+  <script src="/static/vendor/leaflet.js"></script>
+  <link rel="stylesheet" href="/static/vendor/leaflet.css" />
   <script src="/static/vendor/echarts.min.js"></script>
 {% endblock %}
 {% block body %}
@@ -38,7 +40,7 @@
     </template>
 
     <template x-if="plan">
-      <div class="bg-white rounded-2xl border border-black/5 shadow-soft p-6">
+      <div class="bg-white/75 backdrop-blur-xl rounded-2xl border border-white/60 shadow-soft p-6">
         <div class="flex items-start justify-between gap-4 mb-4">
           <div>
             <h1 class="text-xl font-bold" x-text="plan.destination"></h1>
@@ -185,7 +187,7 @@
     </template>
 
     <template x-if="lastDiff">
-      <div class="bg-white rounded-2xl border border-black/5 shadow-soft p-4">
+      <div class="bg-white/75 backdrop-blur-xl rounded-2xl border border-white/60 shadow-soft p-4">
         <h3 class="text-sm font-medium mb-2">本次变更</h3>
         <ul class="space-y-1">
           <template x-for="(line, i) in diffLines()" :key="i">
@@ -209,23 +211,21 @@
 
     <template x-if="plan && !editing">
       <div class="grid md:grid-cols-2 gap-4">
-        <div class="bg-white rounded-2xl border border-black/5 shadow-soft overflow-hidden">
+        <div class="bg-white/75 backdrop-blur-xl rounded-2xl border border-white/60 shadow-soft overflow-hidden">
           <div class="px-4 py-2.5 text-sm font-medium border-b border-black/5 flex items-center justify-between">
-            <span>行程路线示意</span>
-            <span class="text-[11px] font-normal text-ink-400">按天连线，悬停地点查看名称</span>
+            <span>行程路线地图</span>
+            <span class="text-[11px] font-normal text-ink-400">真实地理坐标，悬停节点查看地点</span>
           </div>
-          <div id="route" class="h-80 relative"></div>
-          <div id="route-tooltip"
-            class="hidden absolute z-10 pointer-events-none px-2.5 py-1.5 rounded-lg bg-ink-900/85 text-white text-xs shadow-soft whitespace-nowrap"></div>
+          <div id="route" class="h-80 relative z-0"></div>
         </div>
-        <div class="bg-white rounded-2xl border border-black/5 shadow-soft overflow-hidden">
+        <div class="bg-white/75 backdrop-blur-xl rounded-2xl border border-white/60 shadow-soft overflow-hidden">
           <div class="px-4 py-2.5 text-sm font-medium border-b border-black/5">费用分布</div>
           <div id="cost-chart" class="h-80"></div>
         </div>
       </div>
     </template>
 
-    <div x-show="versions.length > 0" class="bg-white rounded-2xl border border-black/5 shadow-soft p-4">
+    <div x-show="versions.length > 0" class="bg-white/75 backdrop-blur-xl rounded-2xl border border-white/60 shadow-soft p-4">
       <h3 class="text-sm font-medium mb-1">版本历史</h3>
       <template x-for="v in versions" :key="v.version">
         <div class="flex items-center justify-between gap-3 py-2 border-b border-black/5 last:border-0 text-sm">
@@ -245,5 +245,5 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="/static/js/plan.js?v=6"></script>
+<script src="/static/js/plan.js?v=8"></script>
 {% endblock %}

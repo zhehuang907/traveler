@@ -14,7 +14,7 @@ from typing import cast
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -115,6 +115,35 @@ async def _load_context(request: Request, user_id: int, thread_id: str) -> objec
         return await ConversationContextRepository(session).load(user_id, thread_id)
 
 
+async def _load_history_messages(
+    request: Request,
+    user_id: int,
+    thread_id: str,
+    max_messages: int = 30,
+    max_chars: int = 20_000,
+) -> list[BaseMessage]:
+    """把该会话历史（业务库权威）转成 LangChain 消息，供图回灌上下文。
+
+    图每次重新编译（无跨进程 checkpointer），不回灌历史会使助手对之前
+    的对话“失忆”；这里从最近往回收且受条数/字符预算约束，防止 token 溢出。
+    """
+    factory = request.app.state.session_factory
+    async with session_scope(factory) as session:
+        rows = await MessageRepository(session).list(thread_id, limit=max_messages, user_id=user_id)
+    messages: list[BaseMessage] = []
+    budget = max_chars
+    for row in reversed(rows):
+        content = str(row.content or "")
+        if messages and budget - len(content) < 0:
+            break
+        messages.append(
+            AIMessage(content=content) if row.role == "assistant" else HumanMessage(content=content)
+        )
+        budget -= len(content)
+    messages.reverse()
+    return messages
+
+
 async def _run_and_stream(
     request: Request,
     settings: Settings,
@@ -132,7 +161,8 @@ async def _run_and_stream(
     yield f'event: status\ndata: {{"thread_id": "{thread_id}"}}\n\n'
 
     final: dict[str, object] = {}
-    initial: dict[str, object] = {"messages": [HumanMessage(content=message)]}
+    history = await _load_history_messages(request, user.id, thread_id)
+    initial: dict[str, object] = {"messages": [*history, HumanMessage(content=message)]}
     if loaded_brief is not None:
         initial["brief"] = loaded_brief
     chunks = graph.astream(initial, config=config)
@@ -147,26 +177,42 @@ async def _run_and_stream(
 async def _persist(
     request: Request, user_id: int, thread_id: str, final: dict[str, object], message: str
 ) -> None:
+    """流结束后落库：对话消息 / 会话内记忆 / 成功行程，三类各用独立事务。
+
+    拆开事务是关键：行程档案保存（save_snapshot 去重/外键最易抛错）失败时，
+    绝不能让已发生的对话消息一起回滚——否则刷新页面就看不到上一轮对话。
+    """
     log = get_logger(component="chat_persist")
 
     factory = request.app.state.session_factory
+
+    # 1) 对话历史：user 消息 + assistant 回复（最高优先级，先独立提交）
     try:
         async with session_scope(factory) as session:
-            # 对话历史：user 消息 + assistant 回复都落库（按用户隔离）
             messages = MessageRepository(session)
             await messages.add(thread_id, "user", message, user_id=user_id)
             reply = final.get("reply")
             if reply:
                 await messages.add(thread_id, "assistant", str(reply), user_id=user_id)
-            # 会话内记忆：写回（仅当 brief 存在；chitchat 不改则 touch updated_at）
-            brief = final.get("brief")
-            if brief is not None:
+    except Exception:
+        log.exception("chat_messages_persist_failed", thread_id=thread_id)
+
+    # 2) 会话内记忆：写回（仅当 brief 存在；chitchat 不改则 touch updated_at）
+    brief = final.get("brief")
+    if brief is not None:
+        try:
+            async with session_scope(factory) as session:
                 await ConversationContextRepository(session).save(
                     user_id, thread_id, cast(TravelBrief, brief)
                 )
-            # 成功行程留存：仅当本轮实际生成了计划
-            plan = final.get("plan")
-            if plan is not None:
+        except Exception:
+            log.exception("chat_brief_persist_failed", thread_id=thread_id)
+
+    # 3) 成功行程留存：仅当本轮实际生成了计划
+    plan = final.get("plan")
+    if plan is not None:
+        try:
+            async with session_scope(factory) as session:
                 plan_version = final.get("plan_version", 1)
                 version_int = plan_version if isinstance(plan_version, int) else 1
                 diff = cast(PlanDiff | None, final.get("plan_diff"))
@@ -178,8 +224,8 @@ async def _persist(
                     trigger_message_id=thread_id[:64],
                     user_id=user_id,
                 )
-    except Exception:
-        log.exception("chat_persist_failed", thread_id=thread_id)
+        except Exception:
+            log.exception("chat_plan_persist_failed", thread_id=thread_id)
 
 
 @router.post("/upload")

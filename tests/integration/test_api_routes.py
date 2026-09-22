@@ -832,6 +832,66 @@ async def test_chat_history_requires_auth(client: AsyncClient) -> None:
     assert res.status_code == 401
 
 
+async def test_chat_load_history_messages_backfills_context(client: AsyncClient) -> None:
+    """历史回灌：解答问题前把该会话 user/assistant 消息按序转成图上下文，且受预算截断。"""
+    await _register_and_login(client)
+    from travel_agent.api.routes_chat import _load_history_messages, _persist
+
+    app = client.app  # type: ignore[attr-defined]
+    thread_id = "historybackfill001"
+    for text, reply in (("第一轮提问", "第一轮回答"), ("第二轮提问", "第二轮回答")):
+        await _persist(
+            _FakeRequest(app),  # type: ignore[arg-type]
+            user_id=1,
+            thread_id=thread_id,
+            final={"reply": reply},
+            message=text,
+        )
+
+    msgs = await _load_history_messages(_FakeRequest(app), user_id=1, thread_id=thread_id)  # type: ignore[arg-type]
+    expect = [
+        ("HumanMessage", "第一轮提问"),
+        ("AIMessage", "第一轮回答"),
+        ("HumanMessage", "第二轮提问"),
+        ("AIMessage", "第二轮回答"),
+    ]
+    assert [(type(m).__name__, m.content) for m in msgs] == expect
+
+    # 字符预算不足时只保留末尾连续的最近一条
+    msgs = await _load_history_messages(
+        _FakeRequest(app),  # type: ignore[arg-type]
+        user_id=1,
+        thread_id=thread_id,
+        max_chars=3,
+    )
+    assert [(type(m).__name__, m.content) for m in msgs] == [("AIMessage", "第二轮回答")]
+
+
+async def test_chat_persist_plan_failure_keeps_messages(client: AsyncClient) -> None:
+    """对话消息与行程档案分属独立事务：plan 落库失败时消息不能一起回滚。"""
+    await _register_and_login(client)
+    from travel_agent.api.routes_chat import _persist
+
+    app = client.app  # type: ignore[attr-defined]
+    thread_id = "persistsplit001"
+
+    # final 携带非法 plan（缺必填字段），模拟 save_snapshot 抛错
+    await _persist(
+        _FakeRequest(app),  # type: ignore[arg-type]
+        user_id=1,
+        thread_id=thread_id,
+        final={"reply": "回答仍在。", "plan": {"bad": "plan", "days": []}},
+        message="请规划",
+    )
+
+    # 消息不受 plan 失败影响，history 照常返回
+    res = await client.get(f"/api/chat/{thread_id}/history")
+    assert res.status_code == 200
+    rows = res.json()
+    assert [r["role"] for r in rows] == ["user", "assistant"]
+    assert rows[1]["content"] == "回答仍在。"
+
+
 async def test_chat_threads_list_and_delete(client: AsyncClient) -> None:
     """会话聚合列表 + 删除会话（按用户隔离）。"""
     await _register_and_login(client)
