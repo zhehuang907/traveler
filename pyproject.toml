@@ -121,7 +121,15 @@ namespace_packages = true
 
 # 第三方库缺少 py.typed 时的豁免（按实际安装情况维护）
 [[tool.mypy.overrides]]
-module = ["trafilatura.*", "duckduckgo_search.*", "diskcache.*", "pymysql.*"]
+module = [
+    "trafilatura.*",
+    "duckduckgo_search.*",
+    "diskcache.*",
+    "pymysql.*",
+    # playwright 为可选依赖（--extra pdf），CI 类型检查环境未安装
+    "playwright",
+    "playwright.*",
+]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

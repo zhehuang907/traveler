@@ -47,4 +47,5 @@ async def render_plan_pdf(plan: TripPlan, plan_version: int | None = None) -> by
                 await browser.close()
     except Exception as exc:  # pragma: no cover - 环境相关
         raise PdfUnavailable(f"PDF 导出失败：{exc}") from exc
-    return pdf
+    # playwright 无 py.typed，page.pdf() 类型为 Any；Playwright 保证返回 PDF 字节流
+    return bytes(pdf)
