@@ -22,8 +22,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 FROM base AS runtime
 ARG INSTALL_CHROMIUM=0
 COPY --from=builder /app/.venv /app/.venv
-COPY pyproject.toml uv.lock README.md ./
+COPY pyproject.toml uv.lock README.md alembic.ini ./
 COPY src ./src
+# 迁移脚本：migrate 服务在容器内执行 alembic upgrade head 需要
+COPY migrations ./migrations
 
 # PDF 导出可选：--build-arg INSTALL_CHROMIUM=1
 RUN if [ "$INSTALL_CHROMIUM" = "1" ]; then \
