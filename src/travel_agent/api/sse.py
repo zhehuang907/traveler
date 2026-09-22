@@ -33,7 +33,8 @@ async def sse_stream(
 
         # 捕获可用于"会话内记忆 + 成功行程留存"的最终状态
         if final is not None:
-            if node_name == "parse_intent" and state.get("brief") is not None:
+            # 任一节点更新过 brief 都记录（parse_intent 之后的值即本轮合并结果）
+            if state.get("brief") is not None:
                 final["brief"] = state.get("brief")
             if (
                 node_name in ("compose_plan", "revise_plan", "patch_plan")

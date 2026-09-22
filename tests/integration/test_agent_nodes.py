@@ -78,6 +78,51 @@ async def test_parse_intent_node() -> None:
     assert llm.calls[0][0] == "IntentResult"
 
 
+async def test_parse_intent_merges_keeps_existing_slots() -> None:
+    """抽取结果缺槽位时，已有会话记忆不被清空（防止下一轮重复追问）。"""
+    existing = TravelBrief(
+        destination="成都",
+        start_date=date(2026, 10, 1),
+        end_date=date(2026, 10, 4),
+        travelers=2,
+        budget_cny=5000,
+        pace="packed",
+        transport="public",
+    )
+    # FakeLLM 返回的新 brief 仅含 destination（模拟 LLM 把其它槽位置空）
+    incoming = IntentResult(intent="new_plan", brief=TravelBrief(destination="成都"))
+    llm = FakeLLM(intent=incoming)
+    state: TravelState = {
+        "brief": existing,
+        "messages": [HumanMessage(content="就这个安排")],
+    }
+    result = await parse_intent(state, llm=llm)
+    merged = cast(TravelBrief, result["brief"])
+    assert merged.start_date == date(2026, 10, 1)
+    assert merged.end_date == date(2026, 10, 4)
+    assert merged.travelers == 2
+    assert merged.budget_cny == 5000
+    assert merged.pace == "packed"
+    assert merged.transport == "public"
+
+
+async def test_parse_intent_defaults_public_transport_on_plan() -> None:
+    """规划意图且未指定出行方式 → 默认公共交通（自驾需用户明确表达）。"""
+    llm = FakeLLM(intent=IntentResult(intent="new_plan", brief=TravelBrief(destination="南京")))
+    state: TravelState = {"messages": [HumanMessage(content="去南京玩三天")]}
+    result = await parse_intent(state, llm=llm)
+    merged = cast(TravelBrief, result["brief"])
+    assert merged.transport == "public"
+
+    # 非规划意图不擅自默认
+    llm_chitchat = FakeLLM(
+        intent=IntentResult(intent="chitchat", brief=TravelBrief(destination="南京"))
+    )
+    result = await parse_intent(state, llm=llm_chitchat)
+    merged = cast(TravelBrief, result["brief"])
+    assert merged.transport is None
+
+
 async def test_clarify_node_asks_one_question() -> None:
     llm = FakeLLM(replies=["请问你打算哪天出发、几个人呢？"])
     state: TravelState = {

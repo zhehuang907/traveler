@@ -117,3 +117,52 @@ def test_transport_guide_public_default() -> None:
     assert "公共交通" in text
     assert "地铁" in text
     assert "步行" not in text
+
+
+def test_merge_keeps_existing_slots_when_incoming_empty() -> None:
+    """LLM 抽取结果缺槽位时不覆盖已有值（防下一轮重复追问）。"""
+    existing = _ready_brief().model_copy(
+        update={"guide_ready": True, "must_visit": ["武侯祠"], "transport": "public"}
+    )
+    # 新抽取结果几乎全空（仅 destination 不同），模拟 LLM 结构化输出置空
+    incoming = TravelBrief(destination="南京")
+    merged = existing.merge(incoming)
+    assert merged.destination == "南京"  # 新值覆盖
+    assert merged.start_date == date(2026, 10, 1)  # 旧值保留
+    assert merged.end_date == date(2026, 10, 4)
+    assert merged.travelers == 2
+    assert merged.budget_cny == 5000
+    assert merged.pace == "moderate"
+    assert merged.guide_ready is True
+    assert merged.must_visit == ["武侯祠"]
+    assert merged.transport == "public"
+
+
+def test_merge_updates_new_and_dedupes_lists() -> None:
+    existing = _ready_brief().model_copy(update={"must_visit": ["武侯祠"]})
+    incoming = TravelBrief(
+        travelers=4,
+        budget_cny=8000,
+        pace="packed",
+        must_visit=["武侯祠", "大熊猫基地"],
+        dietary=["辣"],
+    )
+    merged = existing.merge(incoming)
+    assert merged.travelers == 4
+    assert merged.budget_cny == 8000
+    assert merged.pace == "packed"
+    assert merged.must_visit == ["武侯祠", "大熊猫基地"]  # 去重合并
+    assert merged.dietary == ["辣"]
+    # 未提及字段保持原值
+    assert merged.destination == "成都"
+
+
+def test_summary_text_lists_confirmed_info() -> None:
+    summary = _ready_brief().model_copy(update={"transport": "public"}).summary_text()
+    assert "目的地 成都" in summary
+    assert "2026-10-01 至 2026-10-04" in summary
+    assert "2人" in summary
+    assert "预算 5000元" in summary
+    assert "节奏适中" in summary
+    assert "公共交通" in summary
+    assert TravelBrief().summary_text() == "（暂无）"

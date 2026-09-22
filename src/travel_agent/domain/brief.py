@@ -4,6 +4,8 @@
 结合今天解析成绝对日期后填入，内核不做自然语言时间解析。
 """
 
+from __future__ import annotations
+
 from datetime import date
 from typing import ClassVar, Literal
 
@@ -17,6 +19,13 @@ _PACE_LABEL = {"relaxed": "轻松", "moderate": "适中", "packed": "紧凑"}
 
 # 出行方式：public 公共交通（默认建议）/ self_driving 自驾 / walking 步行 / mixed 混用
 TransportMode = Literal["public", "self_driving", "walking", "mixed"]
+
+_TRANSPORT_LABEL: dict[str, str] = {
+    "public": "公共交通",
+    "self_driving": "自驾",
+    "walking": "步行",
+    "mixed": "混用",
+}
 
 
 class TravelBrief(DomainModel):
@@ -119,3 +128,59 @@ class TravelBrief(DomainModel):
             "用户默认公共交通出行：目的地优先安排地铁或公交直达的地点并注明最近站点，"
             "远端换乘留足时间。"
         )
+
+    _MERGE_FIELDS: ClassVar[tuple[str, ...]] = (
+        "destination",
+        "start_date",
+        "end_date",
+        "travelers",
+        "budget_cny",
+        "pace",
+        "preferences",
+        "dietary",
+        "must_visit",
+        "avoid",
+        "guide_ready",
+        "transport",
+    )
+
+    def merge(self, incoming: TravelBrief) -> TravelBrief:
+        """确定性合并新一轮抽取结果，已有非空槽位不因新结果为空而丢失。
+
+        LLM 结构化抽取常把既往已确认、本轮未提及的槽位置空；若直接覆盖会
+        导致下一轮澄清又重复追问。这里以「旧值 + 新值非空则覆盖、列表去重
+        追加」的方式兜底，保证会话记忆只会越滚越全。
+        """
+        merged = self.model_copy(deep=True)
+        update: dict[str, object] = {}
+        for name in self._MERGE_FIELDS:
+            new_val = getattr(incoming, name)
+            if new_val in (None, ""):
+                continue
+            if isinstance(new_val, list):
+                combined = list(dict.fromkeys([*getattr(merged, name), *new_val]))
+                if combined:
+                    update[name] = combined
+            else:
+                update[name] = new_val
+        return merged.model_copy(update=update)
+
+    def summary_text(self) -> str:
+        """已确认信息摘要（澄清/回复模板引用，避免重复确认已提供的内容）。"""
+        parts: list[str] = []
+        if self.destination:
+            parts.append(f"目的地 {self.destination}")
+        if self.start_date is not None and self.end_date is not None:
+            days = self.duration_days or 0
+            parts.append(f"{self.start_date} 至 {self.end_date}（{days}天）")
+        elif self.start_date is not None:
+            parts.append(f"出发 {self.start_date}")
+        if self.travelers is not None:
+            parts.append(f"{self.travelers}人")
+        if self.budget_cny is not None:
+            parts.append(f"预算 {self.budget_cny:.0f}元")
+        if self.pace_label:
+            parts.append(f"节奏{self.pace_label}")
+        if self.transport is not None:
+            parts.append(_TRANSPORT_LABEL.get(self.transport, self.transport))
+        return "、".join(parts) if parts else "（暂无）"

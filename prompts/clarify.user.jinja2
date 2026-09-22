@@ -1,4 +1,5 @@
 目的地：{{ destination or "（未提供）" }}
+已确认信息：{{ summary | default("（暂无）") }}
 仍缺少的信息：{{ missing_labels | join("、") }}
 {% if preference_hints %}
 想在开始排程前再多了解几点（可一并回答，也可先跳过）：
