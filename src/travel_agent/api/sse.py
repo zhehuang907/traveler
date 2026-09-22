@@ -42,6 +42,9 @@ async def sse_stream(
                 final["plan"] = state.get("plan")
                 final["plan_version"] = state.get("plan_version", plan_version)
                 final["plan_diff"] = state.get("plan_diff")
+            # 回复文本：供对话历史落库（clarify 的问题与 respond 的回答）
+            if node_name in ("clarify_brief", "respond") and state.get("reply"):
+                final["reply"] = state.get("reply")
 
         if node_name == "parse_intent":
             continue

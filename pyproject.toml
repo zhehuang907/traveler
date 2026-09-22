@@ -52,7 +52,9 @@ pdf = ["playwright>=1.45"]
 
 [dependency-groups]
 dev = [
-    "ruff>=0.6",
+    # 上限锁定：ruff 跨大版本会调整规则集与默认行为（如 UP038 曾由稳定降为 preview），
+    # 不锁上限会导致 CI 与本地/lock 解析出不同版本，出现「本地过、CI 挂」的假失败
+    "ruff>=0.16,<0.17",
     "mypy>=1.11",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
@@ -94,6 +96,8 @@ select = [
 ]
 # B008: FastAPI 的 Depends()/Query() 作为默认参数是官方推荐写法
 # RUF001/002/003: 中文项目的中文标点/歧义字符属正常情况
+# 注：UP038（isinstance 元组→X|Y）在 ruff 0.7+ 已被移除并降为 preview 规则，
+#     故不再需要 ignore；代码统一使用 X | Y 写法
 ignore = ["B008", "RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.lint.per-file-ignores]

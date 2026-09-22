@@ -1,12 +1,38 @@
 {% extends "base.html" %}
 {% block title %}小T · 你的智能旅行规划师{% endblock %}
+{% block head %}
+<style>
+  /* 主页背景：高清雪山黄昏原图，无白色遮罩 */
+  body {
+    background-image: url('/static/img/background.jpg');
+    background-size: cover;
+    background-position: center 30%;
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+  }
+
+  /* ===== 登录页左侧 · 小熊简单行走动画 ===== */
+  /* 原地走路：上下起伏 + 轻微前后摇摆，模拟拖行李箱步伐 */
+  @keyframes buddy-walk {
+    0%, 100% { transform: translateY(0) rotate(-2deg); }
+    30%      { transform: translateY(-8px) rotate(1.5deg); }
+    60%      { transform: translateY(0) rotate(1.5deg); }
+    80%      { transform: translateY(-4px) rotate(-1deg); }
+  }
+  .buddy-run {
+    animation: buddy-walk 0.9s ease-in-out infinite;
+    transform-origin: 50% 92%;
+  }
+</style>
+{% endblock %}
 {% block body %}
 <div x-data="chatApp()" class="h-screen flex flex-col">
 
   <!-- 顶栏 -->
-  <header class="h-14 flex items-center justify-between px-5 bg-white/80 backdrop-blur border-b border-black/5 shrink-0">
+  <header class="h-14 flex items-center justify-between px-5 bg-white/55 backdrop-blur-md border-b border-white/30 shrink-0">
     <a href="/" class="flex items-center gap-2.5">
-      <span class="w-8 h-8 rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 text-white grid place-items-center font-bold text-sm shadow-lift">T</span>
+      <img src="/static/img/logo/logo_round.png" alt="小T"
+        class="w-8 h-8 rounded-full object-cover shadow-lift" />
       <span class="font-semibold text-[15px]">小T</span>
       <span class="text-ink-300 text-xs hidden sm:inline">智能旅行规划师</span>
     </a>
@@ -14,8 +40,11 @@
       <a href="/docs" class="text-xs text-ink-500 hover:text-brand-600 transition-colors">API 文档</a>
       <template x-if="me">
         <div class="flex items-center gap-2.5">
+          <button @click="startNewChat()" class="text-xs px-3 py-1.5 rounded-full bg-white text-ink-500 border border-black/10 hover:bg-brand-50 hover:text-brand-600 transition-colors">新对话</button>
           <button @click="openPlans()" class="text-xs px-3 py-1.5 rounded-full bg-brand-50 text-brand-700 border border-brand-100 hover:bg-brand-100 transition-colors">我的行程</button>
+          <button @click="openThreads()" class="text-xs px-3 py-1.5 rounded-full bg-white text-ink-500 border border-black/10 hover:bg-brand-50 hover:text-brand-600 transition-colors">历史会话</button>
           <span class="text-xs text-ink-500 max-w-[9rem] truncate" x-text="'Hi, ' + me.username"></span>
+          <button @click="changePassword()" class="text-xs text-ink-500 hover:text-brand-600 transition-colors">改密码</button>
           <button @click="logout()" class="text-xs text-ink-500 hover:text-red-500 transition-colors">退出</button>
         </div>
       </template>
@@ -29,13 +58,14 @@
       <!-- 欢迎态 -->
       <template x-if="messages.length === 0 && !streaming">
         <div class="pt-[8vh] flex flex-col items-center text-center">
-          <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-400 to-brand-600 text-white grid place-items-center text-2xl font-bold shadow-lift mb-5">T</div>
-          <h1 class="text-2xl font-bold mb-2">你好，我是小T</h1>
-          <p class="text-ink-500 text-sm mb-8">告诉我你的旅行想法，我来帮你拆解需求、查资料、排行程</p>
+          <img src="/static/img/logo/logo_square.png" alt="小T"
+            class="w-16 h-16 rounded-2xl object-cover shadow-lift mb-5" />
+          <h1 class="text-2xl font-bold mb-2 text-white" style="text-shadow:0 1px 8px rgba(0,0,0,.45)">你好，我是小T</h1>
+          <p class="text-white/90 text-sm mb-8" style="text-shadow:0 1px 6px rgba(0,0,0,.4)">告诉我你的旅行想法，我来帮你拆解需求、查资料、排行程</p>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-xl">
             <template x-for="s in suggestions" :key="s.text">
               <button @click="useSuggestion(s.text)"
-                class="text-left px-4 py-3.5 bg-white rounded-2xl border border-black/5 shadow-soft hover:shadow-lift hover:border-brand-200 transition-all group">
+                class="text-left px-4 py-3.5 bg-white/70 backdrop-blur-md rounded-2xl border border-white/40 shadow-soft hover:bg-white/85 hover:shadow-lift hover:border-brand-200 transition-all group">
                 <div class="text-sm font-medium mb-1 flex items-center gap-2">
                   <span x-text="s.icon"></span><span x-text="s.title"></span>
                 </div>
@@ -50,11 +80,12 @@
       <template x-for="msg in messages" :key="msg.id">
         <div class="mb-6" :class="msg.role === 'user' ? 'flex justify-end' : 'flex gap-3'">
           <template x-if="msg.role !== 'user'">
-            <span class="w-8 h-8 rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 text-white grid place-items-center font-bold text-xs shrink-0 mt-0.5">T</span>
+            <img src="/static/img/logo/logo_round.png" alt="小T"
+              class="w-8 h-8 rounded-full object-cover shrink-0 mt-0.5" />
           </template>
           <div :class="msg.role === 'user'
             ? 'bg-brand-500 text-white px-4 py-2.5 rounded-2xl rounded-tr-md max-w-[85%] text-[15px] leading-relaxed'
-            : 'flex-1 min-w-0 text-[15px] leading-7 markdown-body'"
+            : 'flex-1 min-w-0 text-[15px] leading-7 markdown-body bg-white/60 backdrop-blur-md rounded-2xl px-4 py-3 border border-white/40 shadow-soft'"
             x-html="msg.role === 'user' ? escapeHtml(msg.content) : renderMd(msg.content)"></div>
         </div>
       </template>
@@ -62,7 +93,7 @@
       <!-- 行程卡片 -->
       <template x-if="plan">
         <div class="mb-6 ml-11">
-          <div class="bg-white rounded-2xl border border-black/5 shadow-soft overflow-hidden">
+          <div class="bg-white/70 backdrop-blur-md rounded-2xl border border-white/40 shadow-soft overflow-hidden">
             <div class="px-5 py-4 bg-gradient-to-r from-brand-50 to-white border-b border-black/5 flex items-center justify-between">
               <div>
                 <div class="font-semibold flex items-center gap-2">
@@ -96,7 +127,8 @@
       <!-- 规划中状态 -->
       <template x-if="streaming">
         <div class="mb-6 flex gap-3">
-          <span class="w-8 h-8 rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 text-white grid place-items-center font-bold text-xs shrink-0">T</span>
+          <img src="/static/img/logo/logo_round.png" alt="小T"
+            class="w-8 h-8 rounded-full object-cover shrink-0" />
           <div class="flex-1 pt-1">
             <div class="flex flex-wrap gap-2 mb-3">
               <template x-for="step in steps" :key="step.name">
@@ -114,7 +146,7 @@
             <template x-if="!streamingText">
               <div class="typing-dots flex gap-1.5 pt-1"><span></span><span></span><span></span></div>
             </template>
-            <div x-show="streamingText" class="markdown-body" x-html="renderMd(streamingText)"></div>
+            <div x-show="streamingText" class="markdown-body bg-white/60 backdrop-blur-md rounded-2xl px-4 py-3 border border-white/40 shadow-soft" x-html="renderMd(streamingText)"></div>
           </div>
         </div>
       </template>
@@ -123,9 +155,9 @@
   </div>
 
   <!-- 输入区 -->
-  <div class="shrink-0 bg-gradient-to-t from-[#f7f8fa] via-[#f7f8fa] to-transparent pt-4">
+  <div class="shrink-0 bg-gradient-to-t from-white/75 via-white/35 to-transparent pt-4">
     <div class="max-w-3xl mx-auto px-4 pb-5">
-      <div class="bg-white rounded-2xl border border-black/8 shadow-soft focus-within:shadow-lift focus-within:border-brand-200 transition-all">
+      <div class="bg-white/70 backdrop-blur-md rounded-2xl border border-white/40 shadow-soft focus-within:shadow-lift focus-within:border-brand-200 transition-all">
         <textarea x-model="input" @keydown.enter.prevent="send()" @input="autoGrow($event.target)"
           rows="1" x-ref="input"
           placeholder="问问小T：成都4天怎么安排？预算5000，爱吃辣…"
@@ -148,42 +180,73 @@
     </div>
   </div>
 
-  <!-- 登录/注册遮罩 -->
+  <!-- 登录/注册遮罩：左图右表单 -->
   <div x-show="!me && !authLoading" x-cloak
-    class="fixed inset-0 z-50 bg-white/90 backdrop-blur-sm overflow-auto">
-    <div class="min-h-full flex items-center justify-center p-6">
-      <div class="w-full max-w-sm">
-        <div class="flex flex-col items-center text-center mb-6">
-          <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-400 to-brand-600 text-white grid place-items-center text-2xl font-bold shadow-lift mb-3">T</div>
-          <h1 class="text-xl font-bold">登录小T</h1>
-          <p class="text-ink-500 text-sm mt-1">登录后即可对话、留存并管理你的旅行计划</p>
+    class="fixed inset-0 z-50 bg-[#f7f8fa]/95 backdrop-blur-sm overflow-auto">
+    <div class="min-h-full flex items-center justify-center p-4 sm:p-6">
+      <div class="w-full max-w-3xl bg-white rounded-3xl shadow-lift overflow-hidden flex flex-col md:flex-row">
+
+        <!-- 左侧：小熊行走动态图 + 品牌区（移动端隐藏，桌面端展示） -->
+        <div class="hidden md:flex md:w-[42%] relative flex-col min-h-[26rem] overflow-hidden"
+          style="background:linear-gradient(to bottom, #eaf3fb 0%, #f6f2ea 70%, #efe8da 100%);">
+          <!-- 小熊：原地走路，白底用 multiply 融入背景 -->
+          <div class="absolute inset-x-0 bottom-12 flex justify-center">
+            <img src="/static/img/buddy/v1.png" alt="小T 旅行助手"
+              class="buddy-run h-60 w-auto object-contain"
+              style="mix-blend-mode:multiply;" />
+          </div>
+          <!-- 简单地面线 -->
+          <div class="absolute inset-x-0 bottom-0 h-12 bg-[#e9dfcd] border-t-2 border-[#d8cab2]"></div>
+
+          <!-- 品牌文案 -->
+          <div class="relative z-10 mt-auto p-7 pb-12">
+            <div class="flex items-center gap-2.5 mb-3">
+              <img src="/static/img/logo/logo_round.png" alt="小T"
+                class="w-9 h-9 rounded-full object-cover shadow-lift" />
+              <span class="font-semibold text-lg tracking-wide text-ink-900">小T · 智能旅行规划</span>
+            </div>
+            <p class="text-sm leading-relaxed text-ink-700">让每一次出发都更从容。<br/>从灵感、攻略到完整行程，一站式帮你规划好每一段旅程。</p>
+          </div>
         </div>
-        <form @submit.prevent="submitAuth()" class="bg-white rounded-2xl border border-black/8 shadow-soft p-5 space-y-3.5">
-          <div>
-            <label class="text-xs text-ink-500 mb-1.5 block">用户名</label>
-            <input x-model="authForm.username" autocomplete="username" required
-              class="w-full px-3.5 py-2.5 rounded-xl border border-black/10 outline-none focus:border-brand-300 focus:ring-2 focus:ring-brand-100 text-[15px]"
-              placeholder="3-32 位字母/数字/下划线/中文" />
+
+        <!-- 右侧：表单区 -->
+        <div class="flex-1 p-6 sm:p-8 bg-white">
+          <div class="flex md:hidden flex-col items-center text-center mb-6">
+            <img src="/static/img/logo/logo_square.png" alt="小T"
+              class="w-14 h-14 rounded-2xl object-cover shadow-lift mb-3" />
+            <h1 class="text-xl font-bold">登录小T</h1>
+            <p class="text-ink-500 text-sm mt-1">登录后即可对话、留存并管理你的旅行计划</p>
           </div>
-          <div>
-            <label class="text-xs text-ink-500 mb-1.5 block">密码</label>
-            <input x-model="authForm.password" type="password" autocomplete="current-password" required
-              class="w-full px-3.5 py-2.5 rounded-xl border border-black/10 outline-none focus:border-brand-300 focus:ring-2 focus:ring-brand-100 text-[15px]"
-              placeholder="至少 8 位，含字母和数字" />
-          </div>
-          <p x-show="authError" class="text-xs" :class="authErrorIsOk ? 'text-green-600' : 'text-red-500'" x-text="authError"></p>
-          <button type="submit" :disabled="authSubmitting"
-            class="w-full py-2.5 rounded-xl bg-brand-500 text-white font-medium hover:bg-brand-600 disabled:bg-gray-200 transition-colors"
-            x-text="authMode === 'login' ? '登 录' : '注 册'"></button>
-          <p class="text-center text-xs text-ink-500">
-            <template x-if="authMode === 'login'">
-              <span>还没有账号？<a href="#" @click.prevent="toggleMode()" class="text-brand-600 hover:underline">立即注册</a></span>
-            </template>
-            <template x-if="authMode === 'register'">
-              <span>已有账号？<a href="#" @click.prevent="toggleMode()" class="text-brand-600 hover:underline">去登录</a></span>
-            </template>
-          </p>
-        </form>
+          <h1 class="hidden md:block text-2xl font-bold mb-1">欢迎回来</h1>
+          <p class="hidden md:block text-ink-500 text-sm mb-6">登录后即可对话、留存并管理你的旅行计划</p>
+          <form @submit.prevent="submitAuth()" class="space-y-3.5">
+            <div>
+              <label class="text-xs text-ink-500 mb-1.5 block">用户名</label>
+              <input x-model="authForm.username" autocomplete="username" required
+                class="w-full px-3.5 py-2.5 rounded-xl border border-black/10 outline-none focus:border-brand-300 focus:ring-2 focus:ring-brand-100 text-[15px]"
+                placeholder="3-32 位字母/数字/下划线/中文" />
+            </div>
+            <div>
+              <label class="text-xs text-ink-500 mb-1.5 block">密码</label>
+              <input x-model="authForm.password" type="password" autocomplete="current-password" required
+                class="w-full px-3.5 py-2.5 rounded-xl border border-black/10 outline-none focus:border-brand-300 focus:ring-2 focus:ring-brand-100 text-[15px]"
+                placeholder="至少 8 位，含字母和数字" />
+            </div>
+            <p x-show="authError" class="text-xs" :class="authErrorIsOk ? 'text-green-600' : 'text-red-500'" x-text="authError"></p>
+            <button type="submit" :disabled="authSubmitting"
+              class="w-full py-2.5 rounded-xl bg-brand-500 text-white font-medium hover:bg-brand-600 disabled:bg-gray-200 transition-colors"
+              x-text="authMode === 'login' ? '登 录' : '注 册'"></button>
+            <p class="text-center text-xs text-ink-500">
+              <template x-if="authMode === 'login'">
+                <span>还没有账号？<a href="#" @click.prevent="toggleMode()" class="text-brand-600 hover:underline">立即注册</a></span>
+              </template>
+              <template x-if="authMode === 'register'">
+                <span>已有账号？<a href="#" @click.prevent="toggleMode()" class="text-brand-600 hover:underline">去登录</a></span>
+              </template>
+            </p>
+          </form>
+        </div>
+
       </div>
     </div>
   </div>
@@ -200,14 +263,16 @@
         <button @click="showPlans=false" class="text-ink-400 hover:text-ink-700 text-xl leading-none">&times;</button>
       </div>
       <div class="flex-1 overflow-y-auto p-4 space-y-3">
+        <input type="search" placeholder="搜索目的地 / 标题…" x-model="planQuery" @input.debounce.300ms="searchPlans()"
+          class="w-full px-3 py-2 rounded-lg border border-black/10 text-sm focus:outline-none focus:border-brand-400" />
         <div @click="startNewPlan()" class="cursor-pointer rounded-xl border border-dashed border-brand-200 text-brand-600 text-sm p-3.5 text-center hover:bg-brand-50 transition-colors">
           + 规划一段新旅程
         </div>
         <template x-if="plans.length === 0">
-          <p class="text-center text-sm text-ink-400 py-10">暂无已生成的行程。去和小T聊聊，生成的行程会自动保存在这里。</p>
+          <p class="text-center text-sm text-ink-400 py-10" x-text="planQuery ? '没有匹配的行程。' : '暂无已生成的行程。去和小T聊聊，生成的行程会自动保存在这里。'"></p>
         </template>
         <template x-for="p in plans" :key="p.id">
-          <div class="bg-white rounded-xl border border-black/8 shadow-soft p-4">
+          <div class="bg-white rounded-xl border border-black/[8%] shadow-soft p-4">
             <div class="flex items-start justify-between gap-3">
               <div class="min-w-0">
                 <div class="font-semibold text-[15px]" x-text="p.title || p.destination"></div>
@@ -219,17 +284,78 @@
               </div>
               <div class="flex flex-col gap-1.5 shrink-0 text-xs">
                 <a :href="'/plan/' + p.id" target="_blank" class="px-3 py-1.5 rounded-lg bg-brand-500 text-white text-center hover:bg-brand-600 transition-colors">打开</a>
+                <button @click="clonePlan(p.id)" class="px-3 py-1.5 rounded-lg bg-white text-brand-600 border border-brand-200 hover:bg-brand-50 transition-colors">克隆</button>
                 <button @click="deletePlan(p.id)" class="px-3 py-1.5 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors">删除</button>
               </div>
             </div>
             <div class="text-[11px] text-ink-300 mt-2">更新于 <span x-text="(p.updated_at || '').replace('T',' ').slice(0,16)"></span></div>
           </div>
         </template>
+        <button x-show="plans.length > 0 && plans.length < planTotal" @click="loadMorePlans()" :disabled="planLoadingMore"
+          class="w-full py-2 rounded-lg border border-black/10 text-xs text-ink-500 hover:bg-brand-50 transition-colors"
+          x-text="planLoadingMore ? '加载中…' : '加载更多（' + plans.length + '/' + planTotal + '）'"></button>
       </div>
+    </div>
+  </div>
+
+  <!-- 历史会话抽屉 -->
+  <div x-show="showThreads" x-cloak class="fixed inset-0 z-40">
+    <div class="absolute inset-0 bg-black/20" @click="showThreads=false"></div>
+    <div class="absolute right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl flex flex-col">
+      <div class="px-5 py-4 border-b border-black/5 flex items-center justify-between shrink-0">
+        <div class="font-semibold flex items-center gap-2">
+          历史会话
+          <span class="text-xs font-normal bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full" x-text="threads.length"></span>
+        </div>
+        <button @click="showThreads=false" class="text-ink-400 hover:text-ink-700 text-xl leading-none">&times;</button>
+      </div>
+      <div class="flex-1 overflow-y-auto p-4 space-y-3">
+        <p x-show="threadsLoading" class="text-center text-sm text-ink-400 py-10">加载中…</p>
+        <template x-if="!threadsLoading && threads.length === 0">
+          <p class="text-center text-sm text-ink-400 py-10">暂无历史会话。开始一段对话后会自动保存。</p>
+        </template>
+        <template x-for="t in threads" :key="t.id">
+          <div class="bg-white rounded-xl border border-black/[8%] shadow-soft p-4">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0 flex-1">
+                <div class="text-sm text-ink-700 line-clamp-2 leading-snug" x-text="t.preview"></div>
+                <div class="text-[11px] text-ink-300 mt-1.5">最后消息 <span x-text="t.last_at"></span></div>
+              </div>
+              <div class="flex flex-col gap-1.5 shrink-0 text-xs">
+                <button @click="switchThread(t.id)" class="px-3 py-1.5 rounded-lg bg-brand-500 text-white text-center hover:bg-brand-600 transition-colors">继续</button>
+                <button @click="deleteThread(t.id)" class="px-3 py-1.5 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors">删除</button>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+
+  <!-- 修改密码弹窗 -->
+  <div x-show="showChangePw" class="fixed inset-0 z-50 grid place-items-center bg-black/30"
+       x-cloak @click.self="showChangePw = false">
+    <div class="w-[22rem] bg-white rounded-2xl shadow-soft p-6">
+      <h3 class="font-semibold text-[15px] mb-4">修改密码</h3>
+      <form @submit.prevent="submitChangePassword()" class="space-y-3">
+        <input type="password" placeholder="原密码" x-model="changePwForm.old_password"
+          class="w-full px-3 py-2 rounded-lg border border-black/10 text-sm focus:outline-none focus:border-brand-400" required/>
+        <input type="password" placeholder="新密码（至少 8 位，含字母和数字）" x-model="changePwForm.new_password"
+          class="w-full px-3 py-2 rounded-lg border border-black/10 text-sm focus:outline-none focus:border-brand-400" required/>
+        <p x-show="changePwError" class="text-xs text-red-500" x-text="changePwError"></p>
+        <p x-show="changePwOk" class="text-xs text-green-600" x-text="changePwOk"></p>
+        <div class="flex justify-end gap-2 pt-1">
+          <button type="button" @click="showChangePw = false"
+            class="text-xs px-4 py-2 rounded-lg border border-black/10 text-ink-600">取消</button>
+          <button type="submit" :disabled="changePwSubmitting"
+            class="text-xs px-4 py-2 rounded-lg bg-brand-600 text-white disabled:opacity-50"
+            x-text="changePwSubmitting ? '提交中…' : '确认修改'"></button>
+        </div>
+      </form>
     </div>
   </div>
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="/static/js/chat.js?v=8"></script>
+<script src="/static/js/chat.js?v=12"></script>
 {% endblock %}

@@ -4,25 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}小T · 智能旅游规划{% endblock %}</title>
-  <script src="/static/vendor/tailwind.js"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            brand: { 50:'#f2f0ff',100:'#e7e3ff',200:'#d2cbff',400:'#8b7cf6',500:'#6c5ce7',600:'#5a4bd6',700:'#4a3db5' },
-            ink: { 900:'#1f2329', 700:'#4e5563', 500:'#8a909e', 300:'#c4c9d2' },
-          },
-          fontFamily: { sans: ['-apple-system','BlinkMacSystemFont','"PingFang SC"','"Microsoft YaHei"','"Segoe UI"','sans-serif'] },
-          boxShadow: { soft: '0 2px 16px rgba(31,35,41,.06)', lift: '0 8px 32px rgba(108,92,231,.12)' },
-        }
-      }
-    }
-  </script>
+  <link rel="stylesheet" href="/static/css/tailwind.css?v=1"/>
   <script defer src="/static/vendor/alpine.min.js"></script>
   <script src="/static/vendor/marked.min.js"></script>
   <script src="/static/vendor/purify.min.js"></script>
-  <link rel="stylesheet" href="/static/css/app.css?v=3"/>
+  <link rel="stylesheet" href="/static/css/app.css?v=4"/>
   {% block head %}{% endblock %}
 </head>
 <body class="bg-[#f7f8fa] text-ink-900 font-sans antialiased">

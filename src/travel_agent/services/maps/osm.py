@@ -143,13 +143,13 @@ def _element_to_poi(raw: object) -> Poi | None:
 def _element_point(raw: dict[str, object]) -> GeoPoint | None:
     lat = raw.get("lat")
     lon = raw.get("lon")
-    if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
+    if isinstance(lat, int | float) and isinstance(lon, int | float):
         return GeoPoint(lat=float(lat), lng=float(lon))
     center = raw.get("center")
     if isinstance(center, dict):
         clat = center.get("lat")
         clon = center.get("lon")
-        if isinstance(clat, (int, float)) and isinstance(clon, (int, float)):
+        if isinstance(clat, int | float) and isinstance(clon, int | float):
             return GeoPoint(lat=float(clat), lng=float(clon))
     return None
 

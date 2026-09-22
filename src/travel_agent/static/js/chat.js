@@ -21,6 +21,15 @@ function chatApp() {
     authErrorIsOk: false,
     plans: [],
     showPlans: false,
+    planQuery: '',
+    planTotal: 0,
+    planOffset: 0,
+    planLimit: 20,
+    planLoadingMore: false,
+    // 会话列表（历史会话抽屉）
+    threads: [],
+    showThreads: false,
+    threadsLoading: false,
     suggestions: [
       { icon: '🐼', title: '规划一趟成都之旅', text: '成都4天3晚，预算5000，爱吃辣，帮我安排行程' },
       { icon: '🏔️', title: '第一次去高原', text: '第一次去川西高反严重吗？需要准备什么？' },
@@ -35,6 +44,8 @@ function chatApp() {
     ],
 
     async init() {
+      // 恢复上次会话（thread_id 持久化在 localStorage，刷新/重开后继续同一线程）
+      this.threadId = localStorage.getItem('travel_thread_id') || null;
       await this.bootstrapAuth();
     },
 
@@ -44,6 +55,7 @@ function chatApp() {
         if (res.ok) {
           this.me = await res.json();
           await this.loadPlans();
+          await this.restoreHistory();
         } else {
           this.me = null;
         }
@@ -51,6 +63,44 @@ function chatApp() {
         this.me = null;
       }
       this.authLoading = false;
+    },
+
+    async restoreHistory() {
+      if (!this.threadId) return;
+      try {
+        const res = await fetch('/api/chat/' + this.threadId + '/history', {
+          credentials: 'same-origin',
+        });
+        if (!res.ok) {
+          this.threadId = null;
+          localStorage.removeItem('travel_thread_id');
+          return;
+        }
+        const rows = await res.json();
+        if (!Array.isArray(rows) || !rows.length) return;
+        this.messages = rows.map((r, i) => ({
+          id: Date.now() + i,
+          role: r.role,
+          content: r.content,
+        }));
+        this.$nextTick(() => this.scrollDown());
+      } catch {
+        /* 恢复失败静默，不影响新会话 */
+      }
+    },
+
+    startNewChat() {
+      if (this.streaming) return;
+      this.messages = [];
+      this.plan = null;
+      this.streamingText = '';
+      this.input = '';
+      this.threadId = null;
+      localStorage.removeItem('travel_thread_id');
+      this.$nextTick(() => {
+        const el = this.$refs.input;
+        if (el) el.focus();
+      });
     },
 
     toggleMode() {
@@ -100,16 +150,92 @@ function chatApp() {
       this.me = null;
       this.plans = [];
       this.showPlans = false;
+      this.threads = [];
+      this.showThreads = false;
       this.messages = [];
       this.plan = null;
       this.threadId = null;
+      localStorage.removeItem('travel_thread_id');
+    },
+
+    /* ---------- 修改密码 ---------- */
+
+    showChangePw: false,
+    changePwForm: { old_password: '', new_password: '' },
+    changePwError: null,
+    changePwOk: null,
+    changePwSubmitting: false,
+
+    async changePassword() {
+      this.showChangePw = true;
+      this.changePwForm = { old_password: '', new_password: '' };
+      this.changePwError = null;
+      this.changePwOk = null;
+    },
+
+    async submitChangePassword() {
+      if (this.changePwSubmitting) return;
+      this.changePwSubmitting = true;
+      this.changePwError = null;
+      this.changePwOk = null;
+      try {
+        const res = await fetch('/api/auth/change-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify(this.changePwForm),
+        });
+        if (res.ok) {
+          this.changePwOk = '密码已更新，请重新登录';
+          this.showChangePw = false;
+          await this.logout();
+          return;
+        }
+        const data = await res.json().catch(() => null);
+        this.changePwError = (data && data.error && data.error.message) || '修改失败';
+      } catch {
+        this.changePwError = '网络错误，请稍后重试';
+      } finally {
+        this.changePwSubmitting = false;
+      }
     },
 
     async loadPlans() {
       try {
-        const res = await fetch('/api/plan', { credentials: 'same-origin' });
-        if (res.ok) this.plans = await res.json();
+        const params = new URLSearchParams({ limit: String(this.planLimit) });
+        if (this.planQuery) params.set('q', this.planQuery);
+        const res = await fetch('/api/plan?' + params.toString(), { credentials: 'same-origin' });
+        if (res.ok) {
+          this.plans = await res.json();
+          this.planTotal = Number(res.headers.get('X-Total-Count') || this.plans.length);
+          this.planOffset = 0;
+        }
       } catch { /* 忽略加载失败 */ }
+    },
+
+    async searchPlans() {
+      this.planOffset = 0;
+      await this.loadPlans();
+    },
+
+    async loadMorePlans() {
+      if (this.planLoadingMore) return;
+      if (this.plans.length >= this.planTotal) return;
+      this.planLoadingMore = true;
+      try {
+        const params = new URLSearchParams({
+          limit: String(this.planLimit),
+          offset: String(this.plans.length),
+        });
+        if (this.planQuery) params.set('q', this.planQuery);
+        const res = await fetch('/api/plan?' + params.toString(), { credentials: 'same-origin' });
+        if (res.ok) {
+          const more = await res.json();
+          this.plans = this.plans.concat(more);
+          this.planTotal = Number(res.headers.get('X-Total-Count') || this.plans.length);
+        }
+      } catch { /* 忽略加载失败 */ }
+      this.planLoadingMore = false;
     },
 
     async openPlans() {
@@ -132,6 +258,66 @@ function chatApp() {
       if (!confirm('确定删除该行程？删除后不可恢复。')) return;
       const res = await fetch('/api/plan/' + id, { method: 'DELETE', credentials: 'same-origin' });
       if (res.ok || res.status === 404) await this.loadPlans();
+    },
+
+    async clonePlan(id) {
+      const res = await fetch('/api/plan/' + id + '/clone', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+      if (res.ok) await this.loadPlans();
+    },
+
+    /* ---------- 历史会话列表 / 删除 ---------- */
+
+    async openThreads() {
+      this.showThreads = true;
+      await this.loadThreads();
+    },
+
+    async loadThreads() {
+      if (this.threadsLoading) return;
+      this.threadsLoading = true;
+      try {
+        const res = await fetch('/api/chat/threads', { credentials: 'same-origin' });
+        if (res.ok) {
+          const list = await res.json();
+          this.threads = (list || []).map((t) => ({
+            id: t.thread_id,
+            preview: t.preview || '（空会话）',
+            last_at: (t.last_message_at || '').replace('T', ' ').slice(0, 16),
+          }));
+        }
+      } catch { /* 忽略加载失败 */ }
+      this.threadsLoading = false;
+    },
+
+    switchThread(tid) {
+      if (this.streaming) return;
+      this.threadId = tid;
+      localStorage.setItem('travel_thread_id', tid);
+      this.showThreads = false;
+      this.messages = [];
+      this.plan = null;
+      this.streamingText = '';
+      this.restoreHistory();
+    },
+
+    async deleteThread(tid) {
+      if (!confirm('确定删除该会话？删除后不可恢复。')) return;
+      const res = await fetch('/api/chat/threads/' + tid, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      });
+      if (res.ok || res.status === 404) {
+        if (this.threadId === tid) {
+          this.threadId = null;
+          localStorage.removeItem('travel_thread_id');
+          this.messages = [];
+          this.plan = null;
+        }
+        await this.loadThreads();
+      }
     },
 
     async uploadDoc(e) {
@@ -278,7 +464,10 @@ function chatApp() {
     _dispatch(event, d) {
       switch (event) {
         case 'status':
-          if (d.thread_id) this.threadId = d.thread_id;
+          if (d.thread_id) {
+            this.threadId = d.thread_id;
+            localStorage.setItem('travel_thread_id', d.thread_id);
+          }
           this._setStep('intent', 'done');
           break;
         case 'clarify':

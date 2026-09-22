@@ -11,7 +11,7 @@
 - 🔎 **事实可溯源**：景点 / 餐厅 / 交通均来自搜索与地图 Provider 返回，每条事实挂来源链接，禁止编造
 - 🌦️ **天气驱动编排**：降水概率 > 60% 自动改排室内项目；超预报窗口使用历史气候均值并明确标注
 - 🧩 **局部定向修改**：「第 2 天改轻松点，去掉一个景点」只改命中天数，其余字节级保持不变，并返回 PlanDiff
-- 🗺️ **可视化行程单**：时间轴 + Leaflet 动线地图 + ECharts 费用图表，支持浏览器打印导出 PDF（Ctrl+P → 另存为 PDF）、生成只读分享链接
+- 🗺️ **可视化行程单**：时间轴 + Leaflet 动线地图 + ECharts 费用图表，支持一键导出 A4 PDF（安装 Playwright 后自动生成；未安装时可浏览器打印）、生成只读分享链接
 - 💬 **SSE 流式过程**：实时看到 Agent 的思考、工具调用与进度（正在查询第 3 天天气…）
 - 💾 **只留存成功旅程**：生成成功的行程自动在主页"我的行程"与数据库双留存；chitchat / 开放问答不留存
 - 🧠 **会话内记忆**：分批次补充时间 / 地点 / 人数等信息，跨轮累计到同一份需求，无需一次说完
@@ -75,7 +75,9 @@ CREATE DATABASE travel_agent CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 ```powershell
 uv sync
-# PDF 自动导出为预留能力（暂未启用）；当前版本用浏览器打印导出 PDF，无需额外依赖
+# PDF 自动导出：启用 Playwright 支持时执行（含 Chromium 下载，首次约 150MB）
+uv sync --extra pdf
+uv run playwright install chromium
 ```
 
 ### 第 3 步 · 配置环境变量（首次）
@@ -133,7 +135,7 @@ docker compose up --build -d
 |---|---|
 | `src/travel_agent/api/` | FastAPI 路由（含认证 `routes_auth.py`）、SSE、统一错误模型、依赖 |
 | `src/travel_agent/agent/` | LangGraph 状态图、节点、工具（阶段三） |
-| `src/travel_agent/services/` | 搜索/天气/地图 Provider、降级链、重试、TTL 缓存（阶段二）；正文抽取/PDF 导出（预留） |
+| `src/travel_agent/services/` | 搜索/天气/地图 Provider、降级链、重试、TTL 缓存（阶段二）；正文抽取/PDF 导出（Playwright 可选依赖） |
 | `src/travel_agent/domain/` | 纯业务模型与规则，禁止 IO |
 | `src/travel_agent/db/` | SQLAlchemy 模型（用户/会话/会话记忆/行程）、会话、仓储（MySQL 业务库 + SQLite checkpointer） |
 | `src/travel_agent/templates` `static/` | 服务端渲染页面与静态资源（阶段五），登录/注册与"我的行程"交互（阶段七） |
@@ -181,7 +183,7 @@ make doctor     # 环境自检
 
 - **对话页（/）**：进入即见登录/注册卡片；登录后输入自然语言需求（如「成都4天 预算5000 爱吃辣」），SSE 流式展示规划进度与结果，支持多轮修改；生成成功的行程自动出现在右上角「我的行程」
 - **我的行程（右上角抽屉）**：本人已生成行程列表（目的地/日期/天数/预算），支持打开详情与删除；"规划一段新旅程"回到对话
-- **行程页（/plan/{plan_id}）**：头部显示人均约花费与总花费（若设预算一并显示）；逐日时间轴 + Leaflet 地图标记 + ECharts 费用饼图 + 版本历史与回滚；导出 PDF：使用浏览器打印（Ctrl+P → 目标选「另存为 PDF」）
+- **行程页（/plan/{plan_id}）**：头部显示人均约花费与总花费（若设预算一并显示）；逐日时间轴 + Leaflet 地图标记 + ECharts 费用饼图 + 版本历史与回滚；导出 PDF：安装 Playwright 后点「导出 PDF」自动生成 A4 打印版，未安装时仍可用浏览器打印（Ctrl+P → 目标选「另存为 PDF」）
 - **分享页（/share/{token}）**：只读行程展示，通过 API 生成不可猜测 token 分享给好友
 
 ## 许可证

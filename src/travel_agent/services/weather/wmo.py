@@ -34,7 +34,7 @@ WMO_CONDITIONS: dict[int, str] = {
 
 def describe_wmo(code: object) -> str:
     """未知代码兜底为「未知」，绝不抛异常阻断行程生成。"""
-    if not isinstance(code, (int, float, str, bytes)):
+    if not isinstance(code, int | float | str | bytes):
         return "未知"
     try:
         return WMO_CONDITIONS.get(int(code), "未知")

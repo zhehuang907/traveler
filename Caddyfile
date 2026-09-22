@@ -1,0 +1,13 @@
+# Caddy 反代：自动申请并续期 Let's Encrypt 证书
+# DOMAIN 由 compose 注入；未面世环境可临时改用 localhost 调试
+{$DOMAIN:localhost} {
+    reverse_proxy app:8000
+
+    # 站点根路径 301 → https，交给 Caddy 默认行为即可；以下为常见加固头
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "same-origin"
+    }
+}

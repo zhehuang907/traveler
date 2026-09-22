@@ -33,28 +33,150 @@ function shareApp(token) {
       });
     },
 
+    /* ---------- 路线示意（二维纯白 SVG，替代实际地图） ---------- */
+
     _renderMap() {
-      if (!this.snapshot || !window.L) return;
+      if (!this.snapshot || !document.getElementById('route')) return;
+      const container = document.getElementById('route');
+      container.innerHTML = '';
       const plan = this.snapshot.plan;
-      const map = L.map('map');
-      L.tileLayer(
-        'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
-        { subdomains: ['1', '2', '3', '4'], maxZoom: 18 }
-      ).addTo(map);
-      const bounds = [];
+
+      // 收集地点：跳过备注类、空标题
+      const spots = [];
       plan.days.forEach((day) => {
-        day.items.forEach((item) => {
-          if (item.location) {
-            const point = [item.location.lat, item.location.lng];
-            bounds.push(point);
-            L.marker(point).addTo(map).bindPopup(
-              `<b>${window.escapeHtml(item.title)}</b><br/>第${day.day_index}天`
-            );
-          }
+        (day.items || []).forEach((item) => {
+          const title = (item.title || '').trim();
+          if (!title || item.category === 'note') return;
+          spots.push({
+            title,
+            day: day.day_index,
+            time: item.start_time ? item.start_time.slice(0, 5) : '',
+            category: item.category || 'activity',
+          });
         });
       });
-      if (bounds.length > 0) map.fitBounds(bounds, { padding: [30, 30] });
-      else map.setView([30.57, 104.07], 11);
+
+      if (spots.length === 0) {
+        container.innerHTML = '<div class="h-full grid place-items-center text-sm text-ink-400">暂无地点信息</div>';
+        return;
+      }
+
+      const byDay = new Map();
+      spots.forEach((s) => {
+        if (!byDay.has(s.day)) byDay.set(s.day, []);
+        byDay.get(s.day).push(s);
+      });
+      const dayKeys = [...byDay.keys()];
+
+      const COL_W = 76;
+      const ROW_H = 78;
+      const PAD = 38;
+      const R = 14;
+      const maxCols = Math.max(...dayKeys.map((d) => byDay.get(d).length));
+      const width = Math.max(PAD * 2 + maxCols * COL_W, 480);
+      const height = PAD * 2 + dayKeys.length * ROW_H;
+
+      const coord = (rowIdx, colIdx) => ({
+        x: PAD + colIdx * COL_W,
+        y: PAD + rowIdx * ROW_H,
+      });
+
+      const rowIndex = {};
+      dayKeys.forEach((d, i) => { rowIndex[d] = i; });
+      const colIndex = {};
+      spots.forEach((s) => {
+        const key = s.day + '::' + s.title;
+        if (!(key in colIndex)) {
+          colIndex[key] = byDay.get(s.day).indexOf(s);
+        }
+      });
+      const posOf = (s) => coord(rowIndex[s.day], colIndex[s.day + '::' + s.title]);
+
+      const dayPaths = [];
+      const crossPaths = [];
+      dayKeys.forEach((d, i) => {
+        const list = byDay.get(d);
+        for (let j = 0; j < list.length - 1; j++) {
+          const a = posOf(list[j]);
+          const b = posOf(list[j + 1]);
+          dayPaths.push(this._seg(a, b));
+        }
+        if (i < dayKeys.length - 1) {
+          const a = posOf(list[list.length - 1]);
+          const bList = byDay.get(dayKeys[i + 1]);
+          const b = posOf(bList[0]);
+          crossPaths.push(this._seg(a, b));
+        }
+      });
+
+      const dayColor = (i) => SHARE_CHART_COLORS[i % SHARE_CHART_COLORS.length];
+
+      const nodeHtml = spots.map((s, idx) => {
+        const p = posOf(s);
+        const rowIdx = rowIndex[s.day];
+        const color = dayColor(rowIdx);
+        const label = String(idx + 1);
+        return `
+          <g class="route-node" data-title="${window.escapeHtml(s.title)}" data-day="${s.day}" data-time="${window.escapeHtml(s.time)}"
+             transform="translate(${p.x},${p.y})" style="cursor:pointer;">
+            <circle r="${R}" fill="#ffffff" stroke="${color}" stroke-width="2.5"/>
+            <text text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="600" fill="${color}">${label}</text>
+            <title>${window.escapeHtml(s.title)}（第${s.day}天）</title>
+          </g>`;
+      }).join('');
+
+      const dayLabelHtml = dayKeys.map((d, i) => {
+        const p = coord(i, 0);
+        const color = dayColor(i);
+        return `
+          <g transform="translate(${PAD - 8},${p.y})">
+            <text text-anchor="end" dominant-baseline="central" font-size="11" font-weight="600" fill="${color}">D${d}</text>
+          </g>`;
+      }).join('');
+
+      const svg = `
+        <svg viewBox="0 0 ${width} ${height}" class="w-full h-full" preserveAspectRatio="xMidYMid meet"
+             style="background:#ffffff;">
+          <g stroke="#e9e6f7" stroke-width="1.2" stroke-dasharray="4 5">
+            ${dayKeys.map((d, i) => {
+              const p = coord(i, 0);
+              return `<line x1="${PAD}" y1="${p.y}" x2="${width - PAD}" y2="${p.y}"/>`;
+            }).join('')}
+          </g>
+          <g fill="none" stroke-linecap="round">
+            ${dayPaths.map((s) => `<path d="${s}" stroke="#b8aef9" stroke-width="2"/>`).join('')}
+            ${crossPaths.map((s) => `<path d="${s}" stroke="#c9c6ef" stroke-width="1.6" stroke-dasharray="5 5"/>`).join('')}
+          </g>
+          ${dayLabelHtml}
+          ${nodeHtml}
+        </svg>`;
+      container.innerHTML = svg;
+
+      const tooltip = document.getElementById('route-tooltip');
+      if (!tooltip) return;
+      const nodes = container.querySelectorAll('.route-node');
+      nodes.forEach((node) => {
+        node.addEventListener('mouseenter', () => {
+          const title = node.getAttribute('data-title');
+          const day = node.getAttribute('data-day');
+          const time = node.getAttribute('data-time');
+          tooltip.textContent = `${time ? time + ' · ' : ''}${title}（第${day}天）`;
+          tooltip.classList.remove('hidden');
+        });
+        node.addEventListener('mousemove', (e) => {
+          const rect = container.getBoundingClientRect();
+          tooltip.style.left = `${e.clientX - rect.left + 14}px`;
+          tooltip.style.top = `${e.clientY - rect.top - 12}px`;
+        });
+        node.addEventListener('mouseleave', () => {
+          tooltip.classList.add('hidden');
+        });
+      });
+    },
+
+    _seg(a, b) {
+      const mx = (a.x + b.x) / 2;
+      return `M ${a.x} ${a.y} C ${mx} ${a.y}, ${mx} ${b.y}, ${b.x} ${b.y}`;
     },
 
     _renderChart() {

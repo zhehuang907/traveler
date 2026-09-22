@@ -17,6 +17,7 @@ from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import RequestResponseEndpoint
+from starlette.middleware.gzip import GZipMiddleware
 
 from travel_agent import __version__
 from travel_agent.api import api_router
@@ -45,6 +46,32 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         port=settings.port,
     )
     try:
+        # 启动时顺手清理过期分享快照/元数据与过期会话（单机轻量，不引入定时任务）
+        from travel_agent.services.cleanup import (
+            cleanup_expired_sessions,
+            cleanup_expired_shares,
+            cleanup_expired_shares_meta,
+        )
+
+        sessions_removed = 0
+        share_meta_removed = 0
+        factory = getattr(app.state, "session_factory", None)
+        if factory is not None:
+            try:
+                sessions_removed = await cleanup_expired_sessions(factory)
+            except Exception:
+                log.exception("startup_session_cleanup_failed")
+            try:
+                share_meta_removed = await cleanup_expired_shares_meta(factory)
+            except Exception:
+                log.exception("startup_share_meta_cleanup_failed")
+        shares_removed = cleanup_expired_shares(settings)
+        log.info(
+            "startup_cleanup",
+            sessions_removed=sessions_removed,
+            shares_removed=shares_removed,
+            share_meta_removed=share_meta_removed,
+        )
         yield
     finally:
         log.info("shutdown")
@@ -110,7 +137,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.engine = engine
     app.state.session_factory = make_session_factory(engine)
 
+    # 登录/注册防爆破限流（单进程内存实现）
+    from travel_agent.api.security import LoginThrottle
+
+    app.state.login_throttle = LoginThrottle(
+        max_failures=resolved.auth_max_failures,
+        lock_seconds=resolved.auth_lock_seconds,
+    )
+
     _register_middleware(app)
+    # 静态资源 gzip：echarts/tailwind/leaflet 等体积大头走压缩传输（最小 500B 起压；
+    # SSE 的 StreamingResponse 由 GZipMiddleware 内部跳过，不影响流式）
+    app.add_middleware(GZipMiddleware, minimum_size=500)
     register_exception_handlers(app)
     app.include_router(api_router)
     app.mount("/static", StaticFiles(directory=_STATIC_DIR, check_dir=False), name="static")

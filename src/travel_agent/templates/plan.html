@@ -1,15 +1,14 @@
 {% extends "base.html" %}
 {% block title %}行程详情 · 小T{% endblock %}
 {% block head %}
-  <link rel="stylesheet" href="/static/vendor/leaflet.css"/>
-  <script src="/static/vendor/leaflet.js"></script>
   <script src="/static/vendor/echarts.min.js"></script>
 {% endblock %}
 {% block body %}
 <div x-data="planApp('{{ plan_id }}')">
   <header class="h-14 flex items-center justify-between px-5 bg-white/80 backdrop-blur border-b border-black/5">
     <a href="/" class="flex items-center gap-2.5">
-      <span class="w-8 h-8 rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 text-white grid place-items-center font-bold text-sm shadow-lift">T</span>
+      <img src="/static/img/logo/logo_round.png" alt="小T"
+        class="w-8 h-8 rounded-full object-cover shadow-lift" />
       <span class="font-semibold text-[15px]">小T</span>
     </a>
     <a href="/" class="text-xs text-ink-500 hover:text-brand-600">返回对话</a>
@@ -58,6 +57,12 @@
                 class="text-xs px-3 py-1.5 rounded-lg border border-black/10 text-ink-600 hover:border-brand-300 hover:text-brand-600">编辑行程</button>
               <button @click="showOptimize = !showOptimize"
                 class="text-xs px-3 py-1.5 rounded-lg border border-brand-300 text-brand-600 hover:bg-brand-50">AI 优化</button>
+              <button @click="exportPdf()" :disabled="exporting"
+                class="text-xs px-3 py-1.5 rounded-lg border border-black/10 text-ink-600 hover:border-brand-300 hover:text-brand-600"
+                x-text="exporting ? '导出中…' : '导出 PDF'"></button>
+              <button @click="share()" :disabled="sharing"
+                class="text-xs px-3 py-1.5 rounded-lg border border-black/10 text-ink-600 hover:border-brand-300 hover:text-brand-600"
+                x-text="sharing ? '生成中…' : '分享'"></button>
             </div>
           </template>
           <template x-if="editing">
@@ -205,8 +210,13 @@
     <template x-if="plan && !editing">
       <div class="grid md:grid-cols-2 gap-4">
         <div class="bg-white rounded-2xl border border-black/5 shadow-soft overflow-hidden">
-          <div class="px-4 py-2.5 text-sm font-medium border-b border-black/5">地图路线</div>
-          <div id="map" class="h-80"></div>
+          <div class="px-4 py-2.5 text-sm font-medium border-b border-black/5 flex items-center justify-between">
+            <span>行程路线示意</span>
+            <span class="text-[11px] font-normal text-ink-400">按天连线，悬停地点查看名称</span>
+          </div>
+          <div id="route" class="h-80 relative"></div>
+          <div id="route-tooltip"
+            class="hidden absolute z-10 pointer-events-none px-2.5 py-1.5 rounded-lg bg-ink-900/85 text-white text-xs shadow-soft whitespace-nowrap"></div>
         </div>
         <div class="bg-white rounded-2xl border border-black/5 shadow-soft overflow-hidden">
           <div class="px-4 py-2.5 text-sm font-medium border-b border-black/5">费用分布</div>
@@ -235,5 +245,5 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="/static/js/plan.js?v=5"></script>
+<script src="/static/js/plan.js?v=6"></script>
 {% endblock %}

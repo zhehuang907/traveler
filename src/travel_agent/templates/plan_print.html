@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>{{ plan.destination }} 行程单</title>
+<style>
+  /* ===== 打印专用样式：A4 直接渲染，不依赖外部 CSS（Playwright set_content 场景） ===== */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    color: #1f2329; font-size: 12.5px; line-height: 1.6; padding: 8px 4px;
+  }
+  .head { border-bottom: 2px solid #5a4bd6; padding-bottom: 10px; margin-bottom: 12px; }
+  .head h1 { font-size: 20px; font-weight: 700; color: #1f2329; }
+  .head .meta { color: #4e5563; margin-top: 4px; font-size: 12px; }
+  .head .cost { margin-top: 6px; }
+  .head .cost b { color: #5a4bd6; }
+  .head .cost .muted { color: #8a909e; }
+  .day { page-break-inside: avoid; margin-bottom: 14px; }
+  .day-title {
+    font-size: 13.5px; font-weight: 600; color: #5a4bd6;
+    display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px;
+  }
+  .day-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; border-radius: 50%; background: #e7e3ff;
+    font-size: 11px; flex: 0 0 auto;
+  }
+  .day-note { color: #8a909e; font-size: 11.5px; margin: 2px 0 6px 26px; }
+  .items { border-left: 2px solid #d2cbff; margin-left: 8px; padding-left: 12px; }
+  .item { position: relative; padding: 2px 0 6px; }
+  .item::before {
+    content: ""; position: absolute; left: -17px; top: 7px;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #fff; border: 2px solid #8b7cf6;
+  }
+  .item .row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .item .time { color: #8a909e; font-variant-numeric: tabular-nums; width: 42px; flex: 0 0 auto; }
+  .item .title { font-weight: 500; }
+  .item .tag {
+    font-size: 10px; padding: 0 5px; border-radius: 4px;
+    background: #e7e3ff; color: #4a3db5;
+  }
+  .item .tag.indoor { background: #eff6ff; color: #2563eb; }
+  .item .tag.outdoor { background: #ecfdf5; color: #16a34a; }
+  .item .cost { color: #4e5563; margin-left: auto; }
+  .item .notes { color: #4e5563; font-size: 11.5px; margin-top: 1px; }
+  .summary, .tips { page-break-inside: avoid; margin-top: 10px; }
+  .block-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .summary p { color: #4e5563; white-space: pre-wrap; }
+  .tips li { margin-left: 18px; color: #4e5563; }
+  .footer { margin-top: 14px; padding-top: 8px; border-top: 1px solid #e4e3dd; color: #8a909e; font-size: 11px; }
+  .sources { margin-top: 8px; color: #8a909e; font-size: 11px; word-break: break-all; }
+  @page { size: A4; margin: 14mm 12mm; }
+</style>
+</head>
+<body>
+  <div class="head">
+    <h1>{{ plan.destination }}</h1>
+    <div class="meta">{{ plan.start_date }} ~ {{ plan.end_date }} · {{ plan.travelers }} 人{% if plan.budget_cny %} · 预算 ¥{{ plan.budget_cny }}{% endif %}</div>
+    <div class="cost">人均约 <b>¥{{ plan.per_person_cost_cny }}</b>
+      <span class="muted">（总花费 ¥{{ plan.total_cost_cny }}）</span>
+      {% if plan.climate_reference %}<span class="muted"> · 部分日期采用历史同期气候参考</span>{% endif %}
+    </div>
+  </div>
+
+  {% if plan.summary %}
+  <div class="summary">
+    <div class="block-title">行程概述</div>
+    <p>{{ plan.summary }}</p>
+  </div>
+  {% endif %}
+
+  {% for day in plan.days %}
+  <div class="day">
+    <div class="day-title">
+      <span class="day-num">{{ day.day_index }}</span>
+      <span>{{ day.date }}</span>
+    </div>
+    {% if day.note %}<div class="day-note">{{ day.note }}</div>{% endif %}
+    <div class="items">
+      {% for item in day.items %}
+      <div class="item">
+        <div class="row">
+          <span class="time">{% if item.start_time %}{{ item.start_time.strftime('%H:%M') }}{% else %}·{% endif %}</span>
+          <span class="title">{{ item.title }}</span>
+          {% if item.indoor %}<span class="tag indoor">室内</span>{% else %}<span class="tag outdoor">户外</span>{% endif %}
+          {% if item.cost_cny is not none %}<span class="cost">¥{{ item.cost_cny }}</span>{% endif %}
+        </div>
+        {% if item.notes %}<div class="notes">{{ item.notes }}</div>{% endif %}
+      </div>
+      {% else %}
+      <div class="item"><div class="row"><span class="title">暂无安排</span></div></div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+
+  {% if plan.tips %}
+  <div class="tips">
+    <div class="block-title">出行提示</div>
+    <ul>{% for tip in plan.tips %}<li>{{ tip }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  <div class="footer">
+    由小T · 智能旅游规划生成{% if plan_version %} · 版本 v{{ plan_version }}{% endif %}
+    {% if plan.sources %}
+    <div class="sources">信息来源：{% for src in plan.sources %}{{ src }}{% if not loop.last %} · {% endif %}{% endfor %}</div>
+    {% endif %}
+  </div>
+</body>
+</html>

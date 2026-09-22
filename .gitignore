@@ -43,3 +43,7 @@ playwright-report/
 *.swp
 .DS_Store
 Thumbs.db
+
+# ===== 工具私有目录 / 源素材副本（不参与构建，勿提交） =====
+.workbuddy/
+/image/

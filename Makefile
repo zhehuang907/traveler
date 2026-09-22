@@ -1,4 +1,4 @@
-# 智能旅游规划 Agent 常用命令（Windows 无 make 时可直接复制 uv 命令执行）
+﻿# 智能旅游规划 Agent 常用命令（Windows 无 make 时可直接复制 uv 命令执行）
 .PHONY: setup sync run dev doctor lint format typecheck test cov pdf docker-up clean
 
 setup: ## 初始化：安装依赖 + pre-commit + Playwright Chromium
@@ -34,8 +34,9 @@ test: ## 全量测试
 cov: ## 测试 + 覆盖率报告
 	uv run pytest --cov --cov-report=term-missing
 
-pdf: ## PDF 自动导出（预留，尚未启用）
-	@echo "PDF 自动导出暂未启用：请在行程页使用浏览器打印（Ctrl+P → 另存为 PDF）"
+pdf: ## PDF 自动导出（安装 Playwright 后生效）
+	uv sync --extra pdf
+	uv run playwright install chromium
 
 docker-up: ## 容器方式启动
 	docker compose up --build
@@ -43,3 +44,4 @@ docker-up: ## 容器方式启动
 clean: ## 清理缓存与本地产物
 	rm -rf .ruff_cache .mypy_cache .pytest_cache htmlcov .coverage .coverage.* coverage.xml
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +
+

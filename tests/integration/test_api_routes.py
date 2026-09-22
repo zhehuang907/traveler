@@ -138,6 +138,56 @@ async def test_me_unauthorized(client: AsyncClient) -> None:
     assert res.status_code == 401
 
 
+async def test_change_password_flow(client: AsyncClient) -> None:
+    """改密闭环：旧密校验 → 更新 → 旧会话吊销需重登 → 新密码可登录。"""
+    await _register_and_login(client)
+
+    # 原密码错误
+    res = await client.post(
+        "/api/auth/change-password",
+        json={"old_password": "wrong123", "new_password": "newpass456"},
+    )
+    assert res.status_code == 400
+    assert "原密码错误" in res.json()["error"]["message"]
+
+    # 新密码不合规（纯数字）
+    res = await client.post(
+        "/api/auth/change-password",
+        json={"old_password": "pass1234", "new_password": "12345678"},
+    )
+    assert res.status_code == 422
+
+    # 新旧密码相同
+    res = await client.post(
+        "/api/auth/change-password",
+        json={"old_password": "pass1234", "new_password": "pass1234"},
+    )
+    assert res.status_code == 400
+
+    # 正确改密
+    res = await client.post(
+        "/api/auth/change-password",
+        json={"old_password": "pass1234", "new_password": "newpass456"},
+    )
+    assert res.status_code == 204
+
+    # 旧会话被吊销：me 401
+    res = await client.get("/api/auth/me")
+    assert res.status_code == 401
+
+    # 新密码可登录
+    res = await client.post("/api/auth/login", json={"username": "alice", "password": "newpass456"})
+    assert res.status_code == 200
+
+
+async def test_change_password_requires_auth(client: AsyncClient) -> None:
+    res = await client.post(
+        "/api/auth/change-password",
+        json={"old_password": "x", "new_password": "y1234567"},
+    )
+    assert res.status_code == 401
+
+
 # ---------- 受保护端点：需登录 ----------
 
 
@@ -213,10 +263,100 @@ async def test_share_requires_auth_create(client: AsyncClient) -> None:
     assert res.status_code == 401
 
 
-async def test_pdf_endpoint_returns_503(client: AsyncClient) -> None:
+async def test_share_mine_and_revoke(client: AsyncClient) -> None:
+    """我的分享列表与撤销（仅创建者可撤销）。"""
+    await _register_and_login(client)
+    plan = _trip_plan()
+    res = await client.post(
+        "/api/plan",
+        json={
+            "destination": plan.destination,
+            "start_date": plan.start_date.isoformat(),
+            "end_date": plan.end_date.isoformat(),
+            "travelers": plan.travelers,
+            "budget_cny": plan.budget_cny,
+        },
+    )
+    assert res.status_code == 200
+    plan_id = res.json()["plan"]["plan_id"]
+
+    res = await client.post("/api/share", json={"plan_id": plan_id})
+    assert res.status_code == 200
+    token = res.json()["token"]
+
+    # 我的分享列表包含刚创建的分享
+    res = await client.get("/api/share/mine")
+    assert res.status_code == 200
+    items = res.json()
+    assert any(item["token"] == token and item["destination"] == "成都" for item in items)
+
+    # 撤销后：列表不再包含，且只读链接 404
+    res = await client.delete(f"/api/share/{token}")
+    assert res.status_code == 204
+    res = await client.get("/api/share/mine")
+    assert all(item["token"] != token for item in res.json())
+    res = await client.get(f"/api/share/{token}")
+    assert res.status_code == 404
+
+
+async def test_share_mine_requires_auth(client: AsyncClient) -> None:
+    res = await client.get("/api/share/mine")
+    assert res.status_code == 401
+
+
+async def test_share_revoke_requires_auth(client: AsyncClient) -> None:
+    res = await client.delete("/api/share/abc")
+    assert res.status_code == 401
+
+
+async def test_share_revoke_not_owner(client: AsyncClient) -> None:
+    """非创建者撤销他人分享 → 404。"""
+    await _register_and_login(client, username="alice")
+    plan = _trip_plan()
+    res = await client.post(
+        "/api/plan",
+        json={
+            "destination": plan.destination,
+            "start_date": plan.start_date.isoformat(),
+            "end_date": plan.end_date.isoformat(),
+            "travelers": plan.travelers,
+            "budget_cny": plan.budget_cny,
+        },
+    )
+    plan_id = res.json()["plan"]["plan_id"]
+    res = await client.post("/api/share", json={"plan_id": plan_id})
+    token = res.json()["token"]
+
+    await _register_and_login(client, username="bob")
+    res = await client.delete(f"/api/share/{token}")
+    assert res.status_code == 404
+
+
+async def test_pdf_export_requires_login(client: AsyncClient) -> None:
+    """PDF 导出受保护：未登录 401；登录后按环境给出 200（本机有 Playwright）或 503（CI 无）。"""
+    res = await client.post("/api/plan/abc/pdf")
+    assert res.status_code == 401
+
     await _register_and_login(client)
     res = await client.post("/api/plan/abc/pdf")
-    assert res.status_code == 503
+    # 未找到行程 → 404（先于 PDF 能力检查）
+    assert res.status_code == 404
+
+
+async def test_pdf_export_returns_pdf_or_degraded(client: AsyncClient) -> None:
+    """已有行程的 PDF 导出：本机 Playwright 可用 → 200 + application/pdf；不可用 → 503 降级。"""
+    await _register_and_login(client)
+    plan_id = await _create_plan(client)
+    try:
+        import playwright  # noqa: F401
+    except ImportError:
+        res = await client.post(f"/api/plan/{plan_id}/pdf")
+        assert res.status_code == 503
+        return
+    res = await client.post(f"/api/plan/{plan_id}/pdf")
+    assert res.status_code == 200
+    assert res.headers["content-type"].startswith("application/pdf")
+    assert res.content[:4] == b"%PDF"
 
 
 # ---------- CRUD ----------
@@ -255,6 +395,89 @@ async def test_plan_crud_flow(client: AsyncClient) -> None:
     assert res.status_code == 204
     res = await client.get(f"/api/plan/{plan_id}")
     assert res.status_code == 404
+
+
+async def test_plan_clone_flow(client: AsyncClient) -> None:
+    """克隆生成全新独立行程：新 id、版本从 1 开始、内容一致；非本人 404。"""
+    await _register_and_login(client)
+    res = await client.post(
+        "/api/plan",
+        json={
+            "destination": "杭州",
+            "start_date": "2026-12-01",
+            "end_date": "2026-12-02",
+            "travelers": 2,
+            "budget_cny": 1500,
+        },
+    )
+    assert res.status_code == 200
+    plan_id = res.json()["plan"]["plan_id"]
+
+    res = await client.post(f"/api/plan/{plan_id}/clone")
+    assert res.status_code == 200
+    data = res.json()
+    clone_id = data["plan"]["plan_id"]
+    assert clone_id != plan_id
+    assert data["plan"]["destination"] == "杭州"
+    assert data["plan_version"] == 1
+
+    # 两个行程都在列表，且均可独立访问
+    res = await client.get("/api/plan")
+    ids = [item["id"] for item in res.json()]
+    assert plan_id in ids and clone_id in ids
+    res = await client.get(f"/api/plan/{clone_id}")
+    assert res.status_code == 200
+    assert res.json()["plan"]["destination"] == "杭州"
+
+    # 删除原行程不影响克隆
+    res = await client.delete(f"/api/plan/{plan_id}")
+    assert res.status_code == 204
+    res = await client.get(f"/api/plan/{clone_id}")
+    assert res.status_code == 200
+
+    # 克隆不存在的行程 → 404
+    res = await client.post("/api/plan/nonexistent/clone")
+    assert res.status_code == 404
+
+
+async def test_plan_clone_requires_auth(client: AsyncClient) -> None:
+    res = await client.post("/api/plan/abc/clone")
+    assert res.status_code == 401
+
+
+async def test_plan_search_and_pagination(client: AsyncClient) -> None:
+    """关键词搜索（标题/目的地）+ 分页 + X-Total-Count 总数头。"""
+    await _register_and_login(client)
+    for dest, days in [("北京", 2), ("上海", 3), ("广州", 2)]:
+        res = await client.post(
+            "/api/plan",
+            json={
+                "destination": dest,
+                "start_date": "2026-12-01",
+                "end_date": f"2026-12-{1 + days:02d}",
+                "travelers": 2,
+            },
+        )
+        assert res.status_code == 200
+
+    # 搜索命中"北京"（title 含目的地）
+    res = await client.get("/api/plan", params={"q": "北京"})
+    assert res.status_code == 200
+    items = res.json()
+    assert len(items) == 1
+    assert items[0]["destination"] == "北京"
+    assert res.headers.get("X-Total-Count") == "1"
+
+    # 分页：limit=2 返回 2 条，总数 3
+    res = await client.get("/api/plan", params={"limit": 2})
+    assert res.status_code == 200
+    assert len(res.json()) == 2
+    assert res.headers.get("X-Total-Count") == "3"
+
+    # 第二页取剩余
+    res = await client.get("/api/plan", params={"limit": 2, "offset": 2})
+    assert res.status_code == 200
+    assert len(res.json()) == 1
 
 
 async def test_plan_access_control(client: AsyncClient) -> None:
@@ -513,9 +736,7 @@ class _DigestLLM:
 
 
 async def test_chat_upload_requires_auth(client: AsyncClient) -> None:
-    res = await client.post(
-        "/api/chat/upload", files={"file": ("trip.txt", b"Day1", "text/plain")}
-    )
+    res = await client.post("/api/chat/upload", files={"file": ("trip.txt", b"Day1", "text/plain")})
     assert res.status_code == 401
 
 
@@ -543,9 +764,7 @@ async def test_chat_upload_returns_digest_text(client: AsyncClient) -> None:
 async def test_chat_upload_requires_llm(client: AsyncClient) -> None:
     # 未配置 LLM_API_KEY → get_llm 返回 None → 503
     await _register_and_login(client)
-    res = await client.post(
-        "/api/chat/upload", files={"file": ("trip.txt", b"Day1", "text/plain")}
-    )
+    res = await client.post("/api/chat/upload", files={"file": ("trip.txt", b"Day1", "text/plain")})
     assert res.status_code == 503
     assert res.json()["error"]["code"] == "LLM_NOT_CONFIGURED"
 
@@ -566,3 +785,156 @@ async def test_chat_upload_rejects_unreadable_content(client: AsyncClient) -> No
     )
     assert res.status_code == 400
     assert "PDF" in res.json()["error"]["message"]
+
+
+# ---------- 对话历史（P0-1） ----------
+
+
+class _FakeRequest:
+    """仅暴露 _persist 所需的最小 request 结构（app.state.session_factory）。"""
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+
+async def test_chat_history_persisted_and_isolated(client: AsyncClient) -> None:
+    """对话历史闭环：_persist 落库 user+assistant 消息 → history 返回；他人不可见。"""
+    await _register_and_login(client)
+    from travel_agent.api.routes_chat import _persist
+
+    app = client.app  # type: ignore[attr-defined]
+    thread_id = "historythread001"
+    await _persist(
+        _FakeRequest(app),  # type: ignore[arg-type]  # 测试替身仅需 app.state.session_factory
+        user_id=1,
+        thread_id=thread_id,
+        final={"reply": "这是给你的回答。"},
+        message="你好",
+    )
+
+    res = await client.get(f"/api/chat/{thread_id}/history")
+    assert res.status_code == 200
+    rows = res.json()
+    assert [r["role"] for r in rows] == ["user", "assistant"]
+    assert rows[0]["content"] == "你好"
+    assert rows[1]["content"] == "这是给你的回答。"
+
+    # 用户隔离：bob 看不到 alice 的历史
+    await client.post("/api/auth/logout")
+    await _register_and_login(client, "bob")
+    res = await client.get(f"/api/chat/{thread_id}/history")
+    assert res.status_code == 200
+    assert res.json() == []
+
+
+async def test_chat_history_requires_auth(client: AsyncClient) -> None:
+    res = await client.get("/api/chat/somethread/history")
+    assert res.status_code == 401
+
+
+async def test_chat_threads_list_and_delete(client: AsyncClient) -> None:
+    """会话聚合列表 + 删除会话（按用户隔离）。"""
+    await _register_and_login(client)
+    from travel_agent.api.routes_chat import _persist
+
+    app = client.app  # type: ignore[attr-defined]
+    thread_a = "threadlist001"
+    thread_b = "threadlist002"
+    for tid, reply in ((thread_a, "回答A"), (thread_b, "回答B")):
+        await _persist(
+            _FakeRequest(app),  # type: ignore[arg-type]
+            user_id=1,
+            thread_id=tid,
+            final={"reply": reply},
+            message="你好",
+        )
+
+    res = await client.get("/api/chat/threads")
+    assert res.status_code == 200
+    items = res.json()
+    tids = [item["thread_id"] for item in items]
+    assert thread_a in tids and thread_b in tids
+    by_id = {item["thread_id"]: item for item in items}
+    assert by_id[thread_a]["preview"] == "回答A"
+
+    # 删除会话 A：列表不再包含，history 清空
+    res = await client.delete(f"/api/chat/threads/{thread_a}")
+    assert res.status_code == 204
+    res = await client.get("/api/chat/threads")
+    assert all(item["thread_id"] != thread_a for item in res.json())
+    res = await client.get(f"/api/chat/{thread_a}/history")
+    assert res.json() == []
+
+    # 用户隔离：bob 看不到 alice 的会话，删除 alice 的会话 404
+    await client.post("/api/auth/logout")
+    await _register_and_login(client, username="bob")
+    res = await client.get("/api/chat/threads")
+    assert res.json() == []
+    res = await client.delete(f"/api/chat/threads/{thread_b}")
+    assert res.status_code == 404
+
+
+async def test_chat_threads_requires_auth(client: AsyncClient) -> None:
+    res = await client.get("/api/chat/threads")
+    assert res.status_code == 401
+
+
+# ---------- 行程版本号（P0-2） ----------
+
+
+async def test_get_plan_returns_latest_version(client: AsyncClient) -> None:
+    """GET 详情返回真实最新版本号（编辑一次后应为 v2，而非恒 0）。"""
+    await _register_and_login(client)
+    plan_id = await _create_plan(client)
+    plan = (await client.get(f"/api/plan/{plan_id}")).json()["plan"]
+    res = await client.put(f"/api/plan/{plan_id}", json={"plan": _editable_payload(plan)})
+    assert res.status_code == 200
+    res = await client.get(f"/api/plan/{plan_id}")
+    assert res.status_code == 200
+    assert res.json()["plan_version"] == 2
+
+
+# ---------- 登录防爆破（P0-3） ----------
+
+
+async def test_login_throttle_locks_after_failures(client: AsyncClient) -> None:
+    """连续失败达到阈值后锁定：即使密码正确也 429。"""
+    await client.post("/api/auth/register", json={"username": "carol", "password": "pass1234"})
+    for _ in range(5):
+        res = await client.post(
+            "/api/auth/login", json={"username": "carol", "password": "badpass1"}
+        )
+        assert res.status_code == 401
+    res = await client.post("/api/auth/login", json={"username": "carol", "password": "pass1234"})
+    assert res.status_code == 429
+    assert res.json()["error"]["code"] == "RATE_LIMITED"
+
+
+async def test_login_throttle_success_clears(client: AsyncClient) -> None:
+    """成功登录清除失败计数：后续尝试不再受限。"""
+    await client.post("/api/auth/register", json={"username": "frank", "password": "pass1234"})
+    for _ in range(3):
+        res = await client.post(
+            "/api/auth/login", json={"username": "frank", "password": "badpass1"}
+        )
+        assert res.status_code == 401
+    res = await client.post("/api/auth/login", json={"username": "frank", "password": "pass1234"})
+    assert res.status_code == 200
+    # 清除后再失败 4 次仍不锁定（未达 5 次阈值）
+    for _ in range(4):
+        res = await client.post(
+            "/api/auth/login", json={"username": "frank", "password": "badpass1"}
+        )
+        assert res.status_code == 401
+
+
+async def test_register_throttle_locks_ip(client: AsyncClient) -> None:
+    """注册重复失败锁定 IP：换新用户名同样 429。"""
+    await client.post("/api/auth/register", json={"username": "dave", "password": "pass1234"})
+    for _ in range(5):
+        res = await client.post(
+            "/api/auth/register", json={"username": "dave", "password": "pass1234"}
+        )
+        assert res.status_code == 409
+    res = await client.post("/api/auth/register", json={"username": "erin", "password": "pass1234"})
+    assert res.status_code == 429

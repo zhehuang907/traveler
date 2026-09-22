@@ -6,6 +6,7 @@ from travel_agent.db.repositories import (
     MessageRepository,
     PlanRepository,
     PreferenceRepository,
+    ShareRepository,
     UserRepository,
 )
 from travel_agent.db.session import (
@@ -21,6 +22,7 @@ __all__ = [
     "MessageRepository",
     "PlanRepository",
     "PreferenceRepository",
+    "ShareRepository",
     "UserRepository",
     "create_engine",
     "create_schema",

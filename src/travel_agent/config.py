@@ -84,6 +84,9 @@ class Settings(BaseSettings):
     session_ttl_seconds: int = Field(default=604_800, ge=60)
     # 生产环境开启 Secure，测试/本地 http 关闭
     session_cookie_secure: bool = False
+    # 登录/注册防爆破：窗口内失败次数达到阈值后锁定该用户名/IP 一段时间
+    auth_max_failures: int = Field(default=5, ge=1, le=50)
+    auth_lock_seconds: int = Field(default=900, ge=60, le=86_400)
 
     # ---- 缓存（秒） ----
     cache_dir: Path = Path("data/cache")

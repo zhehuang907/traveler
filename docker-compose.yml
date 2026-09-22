@@ -1,4 +1,45 @@
+# 生产部署编排：应用 + MySQL8 + 一次性迁移 + Caddy(自动 HTTPS)
+# 使用前：cp .env.example .env 并填写真实密钥（数据库凭据建议纯字母数字，
+# 避免特殊字符破坏连接串）；把 DOMAIN 设为你的域名，并在云安全组放行 80/443。
 services:
+  mysql:
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?必须在 .env 中设置}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-travel_agent}
+      MYSQL_USER: ${MYSQL_USER:-travel_app}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?必须在 .env 中设置}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  # 一次性迁移：应用代码变更后随 up 自动执行，幂等（alembic 只应用未执行的版本）
+  migrate:
+    build:
+      context: .
+      args:
+        INSTALL_CHROMIUM: "0"
+    image: travel-agent:latest
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8000
+      DATABASE_URL: mysql+aiomysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}?charset=utf8mb4
+    command: ["python", "-m", "alembic", "upgrade", "head"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: "no"
+
   app:
     build:
       context: .
@@ -10,9 +51,31 @@ services:
     environment:
       HOST: 0.0.0.0
       PORT: 8000
-    ports:
-      - "8000:8000"
-    # 单机 SQLite + diskcache 均落盘 ./data，升级容器不丢会话与缓存
+      DATABASE_URL: mysql+aiomysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}?charset=utf8mb4
+    # 单机 SQLite(checkpointer) + diskcache 均落盘 ./data，升级容器不丢会话与缓存
     volumes:
       - ./data:/app/data
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    environment:
+      DOMAIN: ${DOMAIN:?必须在 .env 中设置你的域名}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+  caddy_data:
+  caddy_config:

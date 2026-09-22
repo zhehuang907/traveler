@@ -5,13 +5,16 @@
 所有端点需登录；列表/详情/编辑/删除校验用户所有权。
 """
 
+import json as _json
 import uuid
 from datetime import date, datetime
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import Response
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from travel_agent.agent.optimize import optimize_saved_plan
 from travel_agent.agent.tools.registry import ToolRegistry
 from travel_agent.api.deps import (
     get_current_user,
@@ -22,10 +25,12 @@ from travel_agent.api.deps import (
 )
 from travel_agent.api.errors import AppError, ErrorCode
 from travel_agent.config import Settings
+from travel_agent.db import PlanRepository
 from travel_agent.db.models import PlanVersionRow, UserRow
-from travel_agent.domain.diff import PlanDiff
-from travel_agent.domain.plan import TripPlan
-from travel_agent.services.llm import StructuredLLM
+from travel_agent.domain.diff import PlanDiff, compute_diff
+from travel_agent.domain.plan import TripPlan, new_plan_id
+from travel_agent.domain.plan_edit import apply_manual_edit
+from travel_agent.services.llm import LLMError, StructuredLLM
 
 __all__ = ["router"]
 
@@ -124,60 +129,74 @@ def _version_snippet(row: PlanVersionRow) -> str | None:
 
 @router.get("", response_model=list[PlanListOut])
 async def list_my_plans(
-    limit: int = 50,
+    q: str | None = None,
+    offset: int = 0,
+    limit: int = 20,
     user: UserRow = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
+    response: Response = None,  # type: ignore[assignment]  # FastAPI 注入
 ) -> list[PlanListOut]:
-    """我的行程列表，按更新时间倒序。"""
-    from travel_agent.db import PlanRepository
+    """我的行程列表，按更新时间倒序，支持关键词搜索 + 分页。
 
+    q 匹配标题/目的地；返回总数写入 X-Total-Count 响应头（前端分页用）。
+    列表只需目的地/日期/天数：目的地与预算直接用 plans 冗余列，
+    日期只做 snapshot_json 顶层的轻量 JSON 解析（不整份 Pydantic 校验，避免 N+1 全量开销）。
+    """
+    offset = max(0, offset)
+    limit = max(1, min(limit, 100))
     repo = PlanRepository(session)
-    rows = await repo.list_by_user(user.id, limit=limit)
+    total = await repo.count_by_user(user.id, q=q)
+    rows = await repo.list_by_user(user.id, limit=limit, offset=offset, q=q)
     out: list[PlanListOut] = []
     for row in rows:
-        plan = TripPlan.model_validate_json(row.snapshot_json)
+        start_date = end_date = None
+        try:
+            meta = _json.loads(row.snapshot_json)
+            start_date = date.fromisoformat(meta["start_date"])
+            end_date = date.fromisoformat(meta["end_date"])
+        except (ValueError, KeyError, TypeError):
+            # 快照异常时不整份解析兜底：日期留空，前端照常渲染其他列
+            pass
+        days = (end_date - start_date).days + 1 if start_date and end_date else 0
         out.append(
             PlanListOut(
                 id=row.id,
                 title=row.title,
-                destination=plan.destination,
-                start_date=plan.start_date.isoformat(),
-                end_date=plan.end_date.isoformat(),
+                destination=row.destination,
+                start_date=start_date.isoformat() if start_date else "",
+                end_date=end_date.isoformat() if end_date else "",
                 budget_cny=row.budget_cny,
-                days=(plan.end_date - plan.start_date).days + 1,
+                days=days,
                 updated_at=row.updated_at,
                 created_at=row.created_at,
             )
         )
+    if response is not None:
+        response.headers["X-Total-Count"] = str(total)
     return out
 
 
 @router.get("/{plan_id}", response_model=PlanOut)
 async def get_plan(
     plan_id: str,
-    settings: Settings = Depends(get_settings),
     user: UserRow = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> PlanOut:
-    from travel_agent.db import PlanRepository
-
     repo = PlanRepository(session)
     plan = await repo.get_plan(plan_id, user_id=user.id)
     if plan is None:
         raise AppError(ErrorCode.PLAN_NOT_FOUND, f"行程 {plan_id} 不存在", status_code=404)
     thread_id = await repo.get_thread_id(plan_id, user_id=user.id)
-    return PlanOut(plan=plan, plan_version=0, thread_id=thread_id)
+    version = await repo.latest_version_number(plan_id)
+    return PlanOut(plan=plan, plan_version=version, thread_id=thread_id)
 
 
 @router.get("/{plan_id}/versions", response_model=list[VersionOut])
 async def list_versions(
     plan_id: str,
-    settings: Settings = Depends(get_settings),
     user: UserRow = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> list[VersionOut]:
-    from travel_agent.db import PlanRepository
-
     repo = PlanRepository(session)
     plan = await repo.get_plan(plan_id, user_id=user.id)
     if plan is None:
@@ -197,12 +216,9 @@ async def list_versions(
 async def rollback(
     plan_id: str,
     req: RollbackRequest,
-    settings: Settings = Depends(get_settings),
     user: UserRow = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> PlanOut:
-    from travel_agent.db import PlanRepository
-
     repo = PlanRepository(session)
     plan = await repo.get_version(plan_id, req.version, user_id=user.id)
     if plan is None:
@@ -221,10 +237,6 @@ async def update_plan(
     session: AsyncSession = Depends(get_db),
 ) -> PlanMutationOut:
     """手动编辑保存：骨架保护 + 事实字段校验后写新版本（差异写入版本历史）。"""
-    from travel_agent.db import PlanRepository
-    from travel_agent.domain.diff import compute_diff
-    from travel_agent.domain.plan_edit import apply_manual_edit
-
     repo = PlanRepository(session)
     current = await repo.get_plan(plan_id, user_id=user.id)
     if current is None:
@@ -259,10 +271,6 @@ async def optimize_plan(
     ctx: ToolRegistry = Depends(get_tool_context),
 ) -> PlanMutationOut:
     """AI 优化：对当前存档整体重排（可附优化说明），产出实时最新方案并写新版本。"""
-    from travel_agent.agent.optimize import optimize_saved_plan
-    from travel_agent.db import PlanRepository
-    from travel_agent.services.llm import LLMError
-
     if llm is None:
         raise AppError(
             ErrorCode.LLM_NOT_CONFIGURED,
@@ -302,8 +310,6 @@ async def create_plan(
     session: AsyncSession = Depends(get_db),
 ) -> PlanOut:
     """手工新建行程，占位：仅创建空骨架，前端跳编辑页补全。"""
-    from travel_agent.domain.plan import TripPlan, new_plan_id
-
     plan_id = new_plan_id()
     plan = TripPlan(
         plan_id=plan_id,
@@ -314,11 +320,27 @@ async def create_plan(
         budget_cny=req.budget_cny,
         days=[],
     )
-    from travel_agent.db import PlanRepository
-
     repo = PlanRepository(session)
     await repo.save_snapshot(plan, uuid.uuid4().hex, 1, user_id=user.id)
     return PlanOut(plan=plan, plan_version=1, thread_id=None)
+
+
+@router.post("/{plan_id}/clone", response_model=PlanOut)
+async def clone_plan(
+    plan_id: str,
+    user: UserRow = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> PlanOut:
+    """克隆行程：复制当前最新快照生成一份全新独立行程（新 id、版本从 1 开始）。"""
+    repo = PlanRepository(session)
+    plan = await repo.get_plan(plan_id, user_id=user.id)
+    if plan is None:
+        raise AppError(ErrorCode.PLAN_NOT_FOUND, f"行程 {plan_id} 不存在", status_code=404)
+    new_id = new_plan_id()
+    # model_copy 深拷贝全部字段，仅替换 plan_id（来源 URL 等保持原样，视为用户自留资料）
+    cloned = plan.model_copy(deep=True, update={"plan_id": new_id})
+    await repo.save_snapshot(cloned, uuid.uuid4().hex, 1, user_id=user.id)
+    return PlanOut(plan=cloned, plan_version=1, thread_id=None)
 
 
 @router.delete("/{plan_id}", status_code=204)
@@ -328,8 +350,6 @@ async def delete_plan(
     session: AsyncSession = Depends(get_db),
 ) -> None:
     """删除行程及其所有版本；非本人返回 404。"""
-    from travel_agent.db import PlanRepository
-
     repo = PlanRepository(session)
     ok = await repo.delete_plan(plan_id, user.id)
     if not ok:
@@ -339,12 +359,26 @@ async def delete_plan(
 @router.post("/{plan_id}/pdf")
 async def export_pdf(
     plan_id: str,
-    settings: Settings = Depends(get_settings),
     user: UserRow = Depends(get_current_user),
-) -> dict[str, str]:
-    """PDF 导出占位：阶段五标记为 TODO，Playwright 渲染打印版 HTML。"""
-    raise AppError(
-        ErrorCode.SERVICE_UNAVAILABLE,
-        "PDF 导出功能暂未启用，请使用浏览器打印",
-        status_code=503,
+    session: AsyncSession = Depends(get_db),
+) -> Response:
+    """PDF 导出：渲染打印版 HTML（Jinja2 服务端）→ Playwright 无头 Chromium 转 A4 PDF。"""
+    from travel_agent.services.pdf import PdfUnavailable, render_plan_pdf
+
+    repo = PlanRepository(session)
+    plan = await repo.get_plan(plan_id, user_id=user.id)
+    if plan is None:
+        raise AppError(ErrorCode.PLAN_NOT_FOUND, f"行程 {plan_id} 不存在", status_code=404)
+    version = await repo.latest_version_number(plan_id)
+    try:
+        pdf_bytes = await render_plan_pdf(plan, plan_version=version)
+    except PdfUnavailable as exc:
+        raise AppError(ErrorCode.SERVICE_UNAVAILABLE, str(exc), status_code=503) from exc
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{plan_id}.pdf"',
+            "Cache-Control": "no-store",
+        },
     )
