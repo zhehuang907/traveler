@@ -1,5 +1,9 @@
 /* ===== 小T 全局样式补充（Tailwind 之外的微调） ===== */
 
+/* Alpine 的 x-cloak：Alpine 初始化前隐藏带该属性的元素。
+   原项目未定义，导致抽屉/弹窗在页面加载时会先闪现一下再消失。 */
+[x-cloak] { display: none !important; }
+
 html, body { height: 100%; }
 body { -webkit-font-smoothing: antialiased; }
 
@@ -12,12 +16,18 @@ body { -webkit-font-smoothing: antialiased; }
 /* 地图圆角 */
 .leaflet-container { border-radius: 0.75rem; font: inherit; }
 
-/* ===== Markdown 排版（助手回复） ===== */
-.markdown-body { color: #1f2329; word-break: break-word; overflow-wrap: anywhere; }
+/* ===== Markdown 排版（助手回复）=====
+   助手回复是主页内容量最大的一块，原来的配色是 GitHub 冷灰蓝（#1f2329正文 /
+   #d2cbff引用边 / #f7f6ff引用底 / #e7e3ff代码字），与行程页的暖白 + 深墨 + 琥珀
+   完全不搭。现整体换成行程页令牌：正文 --pj-ink、引用琥珀边+暖白底、
+   代码块墨底暖白字。 */
+.markdown-body { color: var(--pj-ink); word-break: break-word; overflow-wrap: anywhere; }
 .markdown-body > *:first-child { margin-top: 0; }
 .markdown-body > *:last-child { margin-bottom: 0; }
+/* 标题用衬线，与 .pj-hero-title / .home-hero-title 同族，形成跨页面的展示体统一 */
 .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
-  font-weight: 600; line-height: 1.4; margin: 1em 0 .5em; color: #1f2329;
+  font-weight: 600; line-height: 1.4; margin: 1em 0 .5em; color: var(--pj-ink);
+  font-family: "Songti SC", "Source Han Serif SC", Georgia, serif;
 }
 .markdown-body h2 { font-size: 1.02rem; }
 .markdown-body h3 { font-size: .95rem; }
@@ -25,30 +35,33 @@ body { -webkit-font-smoothing: antialiased; }
 .markdown-body p { margin: .5em 0; }
 .markdown-body ul, .markdown-body ol { margin: .5em 0; padding-left: 1.3em; }
 .markdown-body li { margin: .25em 0; }
-.markdown-body ul li::marker { color: #8b7cf6; }
-.markdown-body ol li::marker { color: #6c5ce7; font-weight: 600; }
-.markdown-body strong { font-weight: 600; color: #1f2329; }
-.markdown-body a { color: #5a4bd6; text-decoration: underline; text-underline-offset: 2px; }
+.markdown-body ul li::marker { color: var(--pj-amber); }
+.markdown-body ol li::marker { color: var(--pj-amber); font-weight: 600; }
+.markdown-body strong { font-weight: 600; color: var(--pj-ink); }
+.markdown-body a { color: #a9681f; text-decoration: underline; text-underline-offset: 2px; }
 .markdown-body code {
-  background: #f2f0ff; color: #4a3db5; padding: .1em .35em;
+  background: var(--pj-amber-soft); color: #a9681f; padding: .1em .35em;
   border-radius: 4px; font-size: .88em;
 }
-.markdown-body pre { background: #1f2329; color: #e7e3ff; padding: .9em 1em; border-radius: .75rem; overflow-x: auto; }
+.markdown-body pre {
+  background: var(--pj-ink); color: #f3efe6; padding: .9em 1em;
+  border-radius: .75rem; overflow-x: auto;
+}
 .markdown-body pre code { background: none; color: inherit; padding: 0; }
 .markdown-body blockquote {
-  border-left: 3px solid #d2cbff; background: #f7f6ff;
+  border-left: 3px solid var(--pj-amber); background: var(--pj-amber-soft);
   margin: .6em 0; padding: .5em .9em; border-radius: 0 .6rem .6rem 0;
-  color: #4e5563; font-size: .92em;
+  color: var(--pj-ink-2); font-size: .92em;
 }
 .markdown-body table { border-collapse: collapse; width: 100%; margin: .6em 0; font-size: .9em; }
-.markdown-body th, .markdown-body td { border: 1px solid #ebedf0; padding: .4em .7em; text-align: left; }
-.markdown-body th { background: #f7f8fa; font-weight: 600; }
-.markdown-body hr { border: none; border-top: 1px solid #ebedf0; margin: 1em 0; }
+.markdown-body th, .markdown-body td { border: 1px solid var(--pj-line); padding: .4em .7em; text-align: left; }
+.markdown-body th { background: #fdfaf4; font-weight: 600; }
+.markdown-body hr { border: none; border-top: 1px solid var(--pj-line); margin: 1em 0; }
 
 /* ===== 打字等待动画 ===== */
 .typing-dots span {
   width: 7px; height: 7px; border-radius: 50%;
-  background: #8b7cf6; animation: typing-bounce 1.2s infinite ease-in-out;
+  background: var(--pj-amber); animation: typing-bounce 1.2s infinite ease-in-out;
 }
 .typing-dots span:nth-child(2) { animation-delay: .18s; }
 .typing-dots span:nth-child(3) { animation-delay: .36s; }
@@ -61,4 +74,1385 @@ body { -webkit-font-smoothing: antialiased; }
 @media (prefers-reduced-motion: reduce) {
   .typing-dots span { animation: none; }
   * { scroll-behavior: auto !important; }
+}
+
+/* ==========================================================================
+   行程详情页（.plan-scope）—— 旅行手册式左右分栏
+   设计取向：纸质暖白底 + 深墨字 + 琥珀强调，替代全站淡紫玻璃卡片。
+   所有规则都挂在 .plan-scope 下，不影响首页 / 分享页 / 打印页。
+   ========================================================================== */
+
+/* 墨色 / 强调色令牌：挂 :root 供全站复用（抽屉、弹窗等非 .plan-scope 区域也要用） */
+:root {
+  --pj-paper: #fbf8f2;
+  --pj-card: #ffffff;
+  --pj-ink: #1d1a15;
+  --pj-ink-2: #55504a;
+  --pj-ink-3: #8b8479;
+  --pj-line: #e7e0d4;
+  --pj-line-2: #f0eae0;
+  --pj-amber: #c07a2c;
+  --pj-amber-soft: #fdf3e3;
+  --pj-jade: #2f7a5f;
+  --pj-jade-soft: #e9f5f0;
+  --pj-plum: #7a4a63;
+  --pj-plum-soft: #f8eef2;
+}
+
+.plan-scope {
+  background:
+    radial-gradient(1100px 520px at 12% -8%, #f6ecdb 0%, rgba(246, 236, 219, 0) 62%),
+    radial-gradient(880px 460px at 96% 4%, #eef1f6 0%, rgba(238, 241, 246, 0) 58%),
+    var(--pj-paper);
+  color: var(--pj-ink);
+  font-family: "Songti SC", "Source Han Serif SC", "Noto Serif CJK SC", Georgia, serif;
+}
+
+/* 界面文字统一用无衬线（中文正文用衬线在小字号下可读性差）；
+   仅标题、日期数字等「展示位」保留衬线，形成对比。
+
+   注意（实测踩过的坑）：`.pj-ui` 会出现在标题元素的**祖先**上（如 <main class="pj-ui">），
+   祖先的选择器虽然特异性同为 (0,2,0)，但它匹配的是祖先、值经继承传下来，
+   而展示位自己若不显式声明 font-family，就会拿到无衬线 —— 表现为
+   「CSS 里明明写了宋体，computedStyle 却是 -apple-system」。
+   故这里用一条独立规则给所有展示位兜底，不依赖它们是否带 .pj-display。 */
+.plan-scope .pj-ui { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif; }
+.plan-scope .pj-display,
+.plan-scope .pj-hero-title,
+.plan-scope .pj-day-date,
+.plan-scope .pj-day-num,
+.plan-scope .pj-ledger-v {
+  font-family: "Songti SC", "Source Han Serif SC", "Noto Serif CJK SC", Georgia, "Times New Roman", serif;
+}
+
+/* ---------- 顶栏 ---------- */
+.plan-scope .pj-topbar {
+  background: rgba(251, 248, 242, .82);
+  backdrop-filter: saturate(1.4) blur(12px);
+  border-bottom: 1px solid var(--pj-line);
+}
+
+/* ---------- 主分栏：左日程 / 右辅助 ---------- */
+.plan-scope .pj-shell {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+  align-items: start;
+}
+@media (min-width: 1024px) {
+  .plan-scope .pj-shell {
+    grid-template-columns: minmax(0, 1.32fr) minmax(330px, .88fr);
+    gap: 24px;
+  }
+  /* 右栏跟随滚动：视线不用来回跳 */
+  .plan-scope .pj-rail {
+    position: sticky;
+    top: 72px;
+    max-height: calc(100vh - 88px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: 2px;
+  }
+}
+
+/* ---------- 卡片 ---------- */
+.plan-scope .pj-card {
+  background: var(--pj-card);
+  border: 1px solid var(--pj-line);
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(29, 26, 21, .04), 0 8px 24px -16px rgba(29, 26, 21, .18);
+}
+.plan-scope .pj-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--pj-line-2);
+}
+.plan-scope .pj-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  color: var(--pj-ink);
+}
+
+/* ---------- 行程头（目的地） ---------- */
+.plan-scope .pj-hero { padding: 18px 20px 16px; }
+.plan-scope .pj-hero-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--pj-amber);
+  font-weight: 600;
+}
+.plan-scope .pj-hero-title {
+  font-size: 30px;
+  line-height: 1.15;
+  font-weight: 600;
+  color: var(--pj-ink);
+  margin: 6px 0 0;
+  letter-spacing: .01em;
+}
+.plan-scope .pj-hero-meta { font-size: 12.5px; color: var(--pj-ink-2); margin-top: 6px; }
+
+/* 费用摘要：细分隔线 + 等宽数字，像收据 */
+.plan-scope .pj-ledger {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--pj-line-2);
+  margin-top: 14px;
+  padding-top: 12px;
+  gap: 10px;
+}
+.plan-scope .pj-ledger-cell { min-width: 0; }
+.plan-scope .pj-ledger-k { font-size: 10.5px; color: var(--pj-ink-3); letter-spacing: .04em; }
+.plan-scope .pj-ledger-v {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--pj-ink);
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.plan-scope .pj-ledger-v small { font-size: 11px; font-weight: 500; color: var(--pj-ink-3); margin-left: 1px; }
+.plan-scope .pj-ledger-cell--accent .pj-ledger-v { color: var(--pj-amber); }
+
+/* ---------- 操作按钮 ---------- */
+.plan-scope .pj-btn {
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--pj-line);
+  background: #fff;
+  color: var(--pj-ink-2);
+  transition: border-color .15s ease, color .15s ease, background-color .15s ease, box-shadow .15s ease;
+  white-space: nowrap;
+}
+.plan-scope .pj-btn:hover:not(:disabled) {
+  border-color: #d8c9ae;
+  color: var(--pj-ink);
+  background: #fffdf9;
+}
+.plan-scope .pj-btn:disabled { opacity: .5; }
+.plan-scope .pj-btn--primary {
+  background: var(--pj-ink);
+  border-color: var(--pj-ink);
+  color: #fdfbf6;
+}
+.plan-scope .pj-btn--primary:hover:not(:disabled) { background: #322c24; border-color: #322c24; color: #fff; }
+.plan-scope .pj-btn--accent {
+  background: var(--pj-amber);
+  border-color: var(--pj-amber);
+  color: #fff;
+}
+.plan-scope .pj-btn--accent:hover:not(:disabled) { background: #a9681f; border-color: #a9681f; color: #fff; }
+
+/* ---------- 天次手风琴 ---------- */
+.plan-scope .pj-day {
+  background: var(--pj-card);
+  border: 1px solid var(--pj-line);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(29, 26, 21, .04);
+  transition: box-shadow .2s ease, border-color .2s ease;
+}
+.plan-scope .pj-day + .pj-day { margin-top: 10px; }
+.plan-scope .pj-day[data-open="true"] {
+  box-shadow: 0 1px 2px rgba(29, 26, 21, .04), 0 10px 28px -18px rgba(29, 26, 21, .22);
+  border-color: #ddd0ba;
+}
+
+/* 天次头：整行可点 */
+.plan-scope .pj-day-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  background: linear-gradient(180deg, #fffdf9 0%, #fdfaf4 100%);
+  transition: background-color .18s ease;
+}
+.plan-scope .pj-day-head:hover { background: #fffaf0; }
+.plan-scope .pj-day[data-open="true"] .pj-day-head { border-bottom: 1px solid var(--pj-line-2); }
+
+/* 日期序号：衬线数字，做成书页编号的样子 */
+.plan-scope .pj-day-num {
+  font-family: "Songti SC", Georgia, "Times New Roman", serif;
+  font-size: 21px;
+  font-weight: 600;
+  line-height: 1;
+  color: #fff;
+  background: var(--pj-ink);
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  letter-spacing: -.02em;
+}
+.plan-scope .pj-day:nth-child(3n+2) .pj-day-num { background: var(--pj-amber); }
+.plan-scope .pj-day:nth-child(3n+3) .pj-day-num { background: var(--pj-jade); }
+.plan-scope .pj-day[data-open="false"] .pj-day-num { opacity: .58; }
+
+.plan-scope .pj-day-main { min-width: 0; flex: 1; }
+.plan-scope .pj-day-date {
+  font-family: "Songti SC", Georgia, serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--pj-ink);
+  line-height: 1.2;
+}
+.plan-scope .pj-day-sub {
+  font-size: 11.5px;
+  color: var(--pj-ink-3);
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.plan-scope .pj-day-sum {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pj-amber);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* 折叠箭头：展开时旋转 */
+.plan-scope .pj-caret {
+  width: 8px;
+  height: 8px;
+  border-right: 1.6px solid var(--pj-ink-3);
+  border-bottom: 1.6px solid var(--pj-ink-3);
+  transform: rotate(45deg);
+  transition: transform .22s cubic-bezier(.4, 0, .2, 1);
+  flex-shrink: 0;
+  margin-right: 2px;
+}
+.plan-scope .pj-day[data-open="true"] .pj-caret { transform: rotate(-135deg); }
+
+/* 折叠体：用 grid-rows 0fr→1fr 做无插件的高度动画（Alpine 无 collapse 插件）。
+   摘要 .pj-collapsed-peek 在 .pj-collapse-area 之外，故收起时仍占位可见。 */
+.plan-scope .pj-day-body { overflow: hidden; }
+/* 收起态：正文区高度归零（grid 动画生效），摘要单独淡入。
+   摘要不能放进这个 grid 里，否则会跟着一起被压成 0 高度。 */
+.plan-scope .pj-collapse-area {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows .26s cubic-bezier(.4, 0, .2, 1);
+}
+.plan-scope .pj-day[data-open="false"] .pj-collapse-area { grid-template-rows: 0fr; }
+.plan-scope .pj-collapse-inner { overflow: hidden; min-height: 0; }
+
+/* 收起时给出的一天摘要：占位可见，让人不用展开也知道当天去哪。
+   左侧留出与时间轴数字列的缩进，视觉上仍属于同一条时间线。 */
+.plan-scope .pj-collapsed-peek {
+  padding: 0 14px 11px 62px;
+  font-size: 11.5px;
+  color: var(--pj-ink-3);
+  line-height: 1.6;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* ---------- 时间轴 ---------- */
+.plan-scope .pj-timeline { position: relative; padding: 12px 14px 12px 14px; }
+.plan-scope .pj-timeline::before {
+  content: "";
+  position: absolute;
+  left: 66px;
+  top: 16px;
+  bottom: 16px;
+  width: 1px;
+  background: linear-gradient(180deg, var(--pj-line) 0%, var(--pj-line-2) 100%);
+}
+.plan-scope .pj-tl-row { position: relative; display: flex; gap: 10px; padding: 7px 0; }
+.plan-scope .pj-tl-time {
+  width: 44px;
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 11.5px;
+  color: var(--pj-ink-3);
+  font-variant-numeric: tabular-nums;
+  padding-top: 1px;
+}
+/* 节点：叠在竖线上 */
+.plan-scope .pj-tl-dot {
+  position: absolute;
+  left: 50px;
+  top: 13px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--pj-ink);
+  z-index: 1;
+}
+.plan-scope .pj-tl-dot[data-cat="attraction"] { border-color: var(--pj-amber); }
+.plan-scope .pj-tl-dot[data-cat="restaurant"] { border-color: #b4544a; }
+.plan-scope .pj-tl-dot[data-cat="hotel"] { border-color: var(--pj-plum); }
+.plan-scope .pj-tl-dot[data-cat="transport"] { border-color: #4a6b8a; }
+.plan-scope .pj-tl-dot[data-cat="note"] { border-color: var(--pj-ink-3); }
+
+.plan-scope .pj-tl-body { min-width: 0; flex: 1; padding-left: 6px; }
+.plan-scope .pj-tl-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--pj-ink);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.plan-scope .pj-tl-tags { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 3px; }
+.plan-scope .pj-tag {
+  font-size: 10px;
+  padding: 1.5px 6px;
+  border-radius: 5px;
+  background: var(--pj-amber-soft);
+  color: #90601f;
+  white-space: nowrap;
+}
+.plan-scope .pj-tag--muted { background: #f3efe7; color: var(--pj-ink-3); }
+.plan-scope .pj-tag--indoor { background: var(--pj-jade-soft); color: var(--pj-jade); }
+.plan-scope .pj-tag--outdoor { background: #fdf1e3; color: #a9681f; }
+.plan-scope .pj-tl-cost {
+  font-size: 12px;
+  color: var(--pj-ink-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.plan-scope .pj-tl-note {
+  font-size: 11.5px;
+  color: var(--pj-ink-3);
+  margin-top: 4px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  border-left: 2px solid var(--pj-line);
+  padding-left: 8px;
+}
+
+/* 摘要：仅在收起态出现。
+   必须用 CSS 选择 data-open 而非 x-show —— Alpine 的 x-show 会给元素写死
+   style="display: block"，即使高度已归零仍会渲染出那一行文字。 */
+.plan-scope .pj-collapsed-peek { display: none; }
+.plan-scope .pj-day[data-open="false"] .pj-collapsed-peek { display: -webkit-box; }
+/* 编辑态强制展开（isDayOpen 恒 true → data-open 恒 true），此处仅作兜底 */
+.plan-scope .pj-edit-mode .pj-collapsed-peek { display: none !important; }
+
+/* ---------- 编辑态条目 ---------- */
+.plan-scope .pj-edit-item {
+  border: 1px solid var(--pj-line);
+  background: #fdfaf4;
+  border-radius: 10px;
+  padding: 10px;
+}
+.plan-scope .pj-field {
+  width: 100%;
+  border: 1px solid var(--pj-line);
+  background: #fff;
+  border-radius: 7px;
+  padding: 5px 8px;
+  font-size: 12.5px;
+  color: var(--pj-ink);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.plan-scope .pj-field:focus {
+  outline: none;
+  border-color: var(--pj-amber);
+  box-shadow: 0 0 0 3px rgba(192, 122, 44, .13);
+}
+.plan-scope .pj-field-label { font-size: 10px; color: var(--pj-ink-3); display: block; margin-bottom: 3px; letter-spacing: .03em; }
+
+/* ---------- 地图 / 图表容器 ---------- */
+.plan-scope #route { height: 268px; position: relative; z-index: 0; background: #f7f3ec; }
+.plan-scope #cost-chart { height: 210px; }
+.plan-scope .pj-viewswitch {
+  display: inline-flex;
+  border: 1px solid var(--pj-line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+  flex-shrink: 0;
+}
+.plan-scope .pj-viewswitch button {
+  font-size: 11px;
+  padding: 4px 9px;
+  color: var(--pj-ink-3);
+  transition: background-color .15s ease, color .15s ease;
+  white-space: nowrap;
+}
+.plan-scope .pj-viewswitch button + button { border-left: 1px solid var(--pj-line); }
+.plan-scope .pj-viewswitch button[data-on="true"] { background: var(--pj-ink); color: #fdfbf6; font-weight: 500; }
+.plan-scope .pj-viewswitch button[data-on="false"]:hover { background: #f7f2e8; color: var(--pj-ink); }
+
+.plan-scope #route-legend { border-top: 1px solid var(--pj-line-2); padding: 8px 14px; background: #fffdf9; }
+
+/* ---------- 酒店三档 ---------- */
+.plan-scope .pj-tier {
+  border: 1px solid var(--pj-line);
+  border-radius: 11px;
+  background: #fff;
+  padding: 11px;
+  display: flex;
+  flex-direction: column;
+}
+.plan-scope .pj-tier[data-tier="value"] { background: linear-gradient(180deg, #f3faf6 0%, #fff 42%); }
+.plan-scope .pj-tier[data-tier="comfort"] { background: linear-gradient(180deg, #fdf7ec 0%, #fff 42%); }
+.plan-scope .pj-tier[data-tier="luxury"] { background: linear-gradient(180deg, #f9f1f5 0%, #fff 42%); }
+.plan-scope .pj-hotel {
+  border: 1px solid var(--pj-line-2);
+  background: rgba(255, 255, 255, .9);
+  border-radius: 9px;
+  padding: 8px 9px;
+}
+.plan-scope .pj-hotel + .pj-hotel { margin-top: 6px; }
+.plan-scope .pj-room-note {
+  background: var(--pj-amber-soft);
+  border: 1px solid #f0e0c4;
+  border-radius: 10px;
+  padding: 9px 11px;
+}
+
+/* ---------- 其他小件 ---------- */
+.plan-scope .pj-note-box {
+  border-left: 2px solid var(--pj-line);
+  padding-left: 10px;
+}
+.plan-scope .pj-empty {
+  font-size: 12px;
+  color: var(--pj-ink-3);
+  padding: 14px;
+  text-align: center;
+}
+.plan-scope .pj-banner {
+  border-radius: 11px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  border: 1px solid;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.plan-scope .pj-banner[data-kind="ok"] { background: var(--pj-jade-soft); border-color: #bfe0d2; color: #1f5f49; }
+.plan-scope .pj-banner[data-kind="error"] { background: #fdeeec; border-color: #f3cec8; color: #a83c2f; }
+
+.plan-scope textarea.pj-field { resize: vertical; line-height: 1.6; }
+.plan-scope ::selection { background: #f3dfb8; color: var(--pj-ink); }
+
+/* 减少动效：关掉折叠动画 */
+@media (prefers-reduced-motion: reduce) {
+  .plan-scope .pj-collapse-area,
+  .plan-scope .pj-caret,
+  .plan-scope .pj-day { transition: none; }
+}
+
+
+/* ==========================================================================
+   抽屉（我的行程 / 历史会话）—— 不透明面板
+   背景问题根因：原模板用了 bg-white/75 + backdrop-blur-2xl + border-l，
+   但这三个类在预编译 tailwind.css 里**根本不存在**（实测 panelBg 全透明、
+   backdropFilter: none），导致背景山图直接穿透面板。
+   故抽屉样式全部自写，不依赖任何 Tailwind 类。
+   ========================================================================== */
+
+.drawer-root { position: fixed; inset: 0; z-index: 40; }
+.drawer-root[hidden] { display: none; }
+
+/* 遮罩：轻压暗 + 极轻模糊，让面板从背景里「浮」出来而不是贴在上面。
+   不宜过深：背景是大幅风景图，压太黑会失去景深层次。 */
+.drawer-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(20, 18, 28, .12) 0%, rgba(20, 18, 28, .30) 100%);
+  backdrop-filter: blur(1.5px);
+  -webkit-backdrop-filter: blur(1.5px);
+}
+
+.drawer-panel {
+  position: absolute;
+  right: 0;
+  top: 0;
+  height: 100%;
+  width: 100%;
+  max-width: 26rem;                 /* 覆盖原 max-w-md，值相同但保证生效 */
+  /* 关键：不透明。极淡的暖调渐变（#fdfcfa → #f6f3f7），
+     与背景冷调山图拉开色温，避免"灰蒙蒙贴上去"的观感。 */
+  background: var(--pj-paper);
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--pj-line);
+  box-shadow: -18px 0 48px -14px rgba(29, 26, 21, .22);
+  animation: drawer-in .26s cubic-bezier(.22, 1, .36, 1);
+}
+@keyframes drawer-in {
+  from { transform: translateX(14px); opacity: .4; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--pj-line);
+  background: rgba(255, 255, 255, .7);
+  flex-shrink: 0;
+}
+.drawer-head-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--pj-ink);
+}
+.drawer-count {
+  font-size: 11px;
+  font-weight: 600;
+  color: #a9681f;
+  background: var(--pj-amber-soft);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-variant-numeric: tabular-nums;
+}
+.drawer-close {
+  font-size: 20px;
+  line-height: 1;
+  color: var(--pj-ink-3);
+  padding: 2px 6px;
+  border-radius: 7px;
+  transition: background-color .15s ease, color .15s ease;
+}
+.drawer-close:hover { background: rgba(29, 26, 21, .06); color: var(--pj-ink); }
+
+.drawer-body {
+  flex: 1 1 auto;
+  min-height: 0;                    /* 关键：允许内部滚动，不把面板撑高 */
+  overflow-y: auto;
+  padding: 16px 18px 24px;
+}
+
+/* 搜索框 */
+.drawer-search {
+  width: 100%;
+  padding: 9px 12px;
+  font-size: 13px;
+  color: var(--pj-ink);
+  background: #fff;
+  border: 1px solid var(--pj-line);
+  border-radius: 10px;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.drawer-search::placeholder { color: var(--pj-ink-3); }
+.drawer-search:focus {
+  outline: none;
+  border-color: #d8c9ae;
+  box-shadow: 0 0 0 3px rgba(192, 122, 44, .16);
+}
+
+/* 「规划一段新旅程」虚线按钮 */
+.drawer-new {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #a9681f;
+  text-align: center;
+  cursor: pointer;
+  background: var(--pj-amber-soft);
+  border: 1px dashed rgba(192, 122, 44, .45);
+  border-radius: 12px;
+  transition: background-color .16s ease, border-color .16s ease, transform .16s ease;
+}
+.drawer-new:hover {
+  background: #fbe9d0;
+  border-color: rgba(192, 122, 44, .75);
+  transform: translateY(-1px);
+}
+
+/* 行程 / 会话卡片：实色 + 左侧色条，与行程页设计呼应 */
+.drawer-card {
+  position: relative;
+  margin-top: 10px;
+  padding: 13px 14px 11px 16px;
+  background: #fff;
+  border: 1px solid var(--pj-line);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(29, 26, 21, .04);
+  overflow: hidden;
+  transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+.drawer-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, var(--pj-ink) 0%, #322c24 100%);
+}
+.drawer-card:hover {
+  border-color: #ddd0ba;
+  box-shadow: 0 6px 18px -10px rgba(29, 26, 21, .2);
+  transform: translateY(-1px);
+}
+
+.drawer-card-title {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--pj-ink);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.drawer-card-meta { margin-top: 5px; font-size: 12px; color: var(--pj-ink-2); line-height: 1.7; }
+.drawer-card-time { margin-top: 7px; font-size: 11px; color: var(--pj-ink-3); font-variant-numeric: tabular-nums; }
+
+/* 卡片右侧动作组：改为横排小按钮，避免竖排三个把卡片撑得又高又窄 */
+.drawer-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex-shrink: 0;
+  align-items: stretch;
+}
+.drawer-act {
+  font-size: 11.5px;
+  padding: 4px 10px;
+  border-radius: 7px;
+  text-align: center;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+.drawer-act--go { background: var(--pj-ink); color: #fdfbf6; }
+.drawer-act--go:hover { background: #322c24; }
+.drawer-act--clone { background: #fff; color: #a9681f; border-color: rgba(192, 122, 44, .4); }
+.drawer-act--clone:hover { background: var(--pj-amber-soft); }
+.drawer-act--danger { background: #fdeeec; color: #c0392b; }
+.drawer-act--danger:hover { background: #fadbd6; }
+
+.drawer-empty {
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--pj-ink-3);
+  padding: 36px 12px;
+  line-height: 1.7;
+}
+.drawer-more {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  padding: 8px;
+  font-size: 12px;
+  color: var(--pj-ink-2);
+  background: #fff;
+  border: 1px solid var(--pj-line);
+  border-radius: 9px;
+  transition: background-color .15s ease, border-color .15s ease;
+}
+.drawer-more:hover:not(:disabled) { background: #fffdf9; border-color: #d8c9ae; }
+.drawer-more:disabled { opacity: .55; }
+
+/* 会话卡片的预览文本 */
+.drawer-preview {
+  font-size: 13px;
+  color: var(--pj-ink-2);
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 抽屉里用到的少量布局工具（原 Tailwind 缺 col-span / min-w-0 组合） */
+.drawer-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.drawer-row > .drawer-row-main { min-width: 0; flex: 1 1 auto; }
+
+/* 修改密码弹窗同样不透明 */
+.modal-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  background: rgba(29, 26, 21, .38);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+.modal-card {
+  width: 22rem;
+  max-width: calc(100vw - 32px);
+  padding: 22px;
+  background: var(--pj-paper);
+  border: 1px solid var(--pj-line);
+  border-radius: 16px;
+  box-shadow: 0 24px 60px -20px rgba(29, 26, 21, .34);
+}
+.modal-title { font-size: 15px; font-weight: 600; color: var(--pj-ink); margin: 0 0 14px; }
+.modal-field {
+  width: 100%;
+  padding: 8px 11px;
+  font-size: 13px;
+  color: var(--pj-ink);
+  background: #fff;
+  border: 1px solid var(--pj-line);
+  border-radius: 9px;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.modal-field:focus {
+  outline: none;
+  border-color: #d8c9ae;
+  box-shadow: 0 0 0 3px rgba(192, 122, 44, .16);
+}
+.modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px; }
+.modal-form { display: flex; flex-direction: column; gap: 10px; }
+.modal-msg { font-size: 12px; margin: 0; line-height: 1.5; }
+.modal-btn {
+  font-size: 12px;
+  padding: 7px 16px;
+  border-radius: 9px;
+  border: 1px solid var(--pj-line);
+  background: #fff;
+  color: var(--pj-ink-2);
+  transition: background-color .15s ease, border-color .15s ease;
+}
+.modal-btn:hover { background: #fffdf9; }
+.modal-btn--primary { background: var(--pj-ink); border-color: var(--pj-ink); color: #fdfbf6; }
+.modal-btn--primary:hover { background: #322c24; }
+.modal-btn:disabled { opacity: .5; }
+
+@media (prefers-reduced-motion: reduce) {
+  .drawer-panel { animation: none; }
+  .drawer-card, .drawer-new { transition: none; }
+}
+
+/* ==========================================================================
+   分享页（share.html）—— 同样存在「假玻璃」问题
+   bg-white/75 / backdrop-blur-xl / border-white/60 三个类在预编译 CSS 里
+   都不存在，导致卡片实为全透明，背景风景图直接穿透、文字压在图上。
+   ========================================================================== */
+.sheet {
+  background: var(--pj-paper);
+  border: 1px solid var(--pj-line);
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(29, 26, 21, .04), 0 16px 40px -24px rgba(29, 26, 21, .26);
+}
+.sheet-pad { padding: 22px; }
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--pj-line-2);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--pj-ink);
+  background: rgba(255, 255, 255, .66);
+}
+.sheet-note { font-size: 11px; font-weight: 400; color: var(--pj-ink-3); }
+.sheet-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+@media (min-width: 768px) { .sheet-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.sheet-overflow { overflow: hidden; }
+.sheet-body { padding: 18px 16px; }
+
+/* 分享页行程头 */
+.sheet-hero { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.sheet-hero-title {
+  font-family: "Songti SC", "Source Han Serif SC", "Noto Serif CJK SC", Georgia, serif;
+  font-size: 22px; font-weight: 600; color: var(--pj-ink); margin: 0; line-height: 1.2;
+}
+.sheet-hero-meta { font-size: 12.5px; color: var(--pj-ink-2); margin-top: 5px; }
+.sheet-hero-cost { text-align: right; flex-shrink: 0; }
+.sheet-hero-pp { font-size: 17px; font-weight: 600; color: var(--pj-amber); font-variant-numeric: tabular-nums; }
+.sheet-hero-total { font-size: 11.5px; color: var(--pj-ink-3); margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+/* 分享页每日时间轴 */
+.sheet-days { display: flex; flex-direction: column; gap: 18px; }
+.sheet-day-head { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
+.sheet-day-num {
+  width: 24px; height: 24px; border-radius: 7px;
+  display: grid; place-items: center;
+  font-size: 12px; font-weight: 600; color: #fff; background: var(--pj-ink);
+}
+.sheet-day-date { font-size: 13.5px; font-weight: 600; color: var(--pj-ink); }
+.sheet-timeline { position: relative; margin-left: 11px; padding-left: 18px; border-left: 1px solid var(--pj-line); }
+.sheet-item { position: relative; padding: 6px 0; }
+.sheet-item::before {
+  content: ""; position: absolute; left: -23px; top: 12px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #fff; border: 2px solid var(--pj-amber);
+}
+.sheet-item-row { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.sheet-item-time { font-size: 11.5px; color: var(--pj-ink-3); font-variant-numeric: tabular-nums; width: 42px; flex-shrink: 0; }
+.sheet-item-main { min-width: 0; flex: 1 1 0; }
+.sheet-item-title { font-size: 13.5px; font-weight: 600; color: var(--pj-ink); line-height: 1.4; overflow-wrap: anywhere; }
+.sheet-item-cost { font-size: 12px; color: var(--pj-ink-2); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.sheet-item-note { font-size: 11.5px; color: var(--pj-ink-3); margin-top: 3px; line-height: 1.55; overflow-wrap: anywhere; }
+
+/* 分享页顶部条与容器 */
+.share-topbar {
+  background: rgba(251, 248, 242, .88);
+  backdrop-filter: saturate(1.3) blur(10px);
+  border-bottom: 1px solid var(--pj-line);
+}
+.share-body {
+  background:
+    radial-gradient(1000px 460px at 10% -6%, #f6ecdb 0%, rgba(246, 236, 219, 0) 60%),
+    radial-gradient(820px 420px at 94% 2%, #e9eef7 0%, rgba(233, 238, 247, 0) 58%),
+    #fbf8f2;
+  min-height: 100vh;
+  color: var(--pj-ink);
+}
+.share-shell { max-width: 60rem; margin: 0 auto; padding: 20px 16px 40px; }
+.share-map { height: 260px; background: #f7f3ec; }
+.share-chart { height: 260px; }
+
+/* ==========================================================================
+   助手主页（index.html）—— 与行程页 .plan-scope 统一设计语言
+   取向以行程页为准：暖白纸质 + 深墨字 + 琥珀强调 + 宋体标题，
+   实色卡片（不再用玻璃拟态）+ 细边框 + 淡阴影。
+   两个历史包袱一并清掉：
+     1. 「假玻璃」：bg-white/80 / backdrop-blur-xl / shadow-lift /
+        rounded-3xl / border-white/50 五个类在预编译 CSS 中都不存在，
+        登录卡无底色、无边框、无阴影；
+     2. 紫色残留：主页与抽屉 / 弹窗 / 分享页共 40 余处 #5a4bd6 系强调色，
+        与行程页的琥珀完全脱节。现在统一替换为 --pj-amber / --pj-ink。
+   ========================================================================== */
+
+.home-root {
+  /* 与 .plan-scope 同款底色：暖白纸 + 左上暖光斑 + 右上冷光斑 */
+  background:
+    radial-gradient(1100px 520px at 12% -8%, #f6ecdb 0%, rgba(246, 236, 219, 0) 62%),
+    radial-gradient(880px 460px at 96% 4%, #eef1f6 0%, rgba(238, 241, 246, 0) 58%),
+    var(--pj-paper);
+  color: var(--pj-ink);
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+}
+
+/* ---------- 顶栏：与 .pj-topbar 同规则 ---------- */
+.home-topbar {
+  background: rgba(251, 248, 242, .88);
+  backdrop-filter: saturate(1.4) blur(12px);
+  -webkit-backdrop-filter: saturate(1.4) blur(12px);
+  border-bottom: 1px solid var(--pj-line);
+  overflow: hidden;          /* 兜底：任何情况下都不允许顶栏撑出横向滚动 */
+}
+.home-topbar .home-brand { color: var(--pj-ink); }
+.home-topbar .home-brand-sub { color: var(--pj-ink-3); }
+
+/* 顶栏动作组：复用行程页 .pj-btn 的白底细边 + 悬停转暖的语言 */
+.home-actions { display: flex; align-items: center; gap: 7px; }
+.home-pill {
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 8px;
+  white-space: nowrap;
+  border: 1px solid var(--pj-line);
+  background: #fff;
+  color: var(--pj-ink-2);
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+.home-pill:hover:not(:disabled) { background: #fffdf9; border-color: #d8c9ae; color: var(--pj-ink); }
+/* 主操作（我的行程）：与 .pj-btn--primary 一样用深墨实心，取代旧紫色胶囊 */
+.home-pill--accent {
+  background: var(--pj-ink);
+  border-color: var(--pj-ink);
+  color: #fdfbf6;
+  font-weight: 500;
+}
+.home-pill--accent:hover { background: #322c24; border-color: #322c24; }
+/* 用户名独立成组，与操作按钮之间加一条竖分隔 */
+.home-user {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--pj-ink-2);
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: rgba(29, 26, 21, .05);
+  max-width: 11rem;
+}
+.home-user::before {
+  content: "";
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--pj-jade);
+  flex-shrink: 0;
+}
+.home-user span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-link { font-size: 12px; color: var(--pj-ink-3); padding: 5px 8px; border-radius: 7px; }
+.home-link:hover { color: var(--pj-ink); background: rgba(29, 26, 21, .05); }
+
+/* 窄屏顶栏：品牌副标题与部分操作隐藏，只留最必要的入口，
+   否则 7 个元素在 400px 宽会互相挤爆并撑出横向滚动。 */
+@media (max-width: 639px) {
+  .home-topbar { padding-left: 12px; padding-right: 8px; }
+  .home-actions { gap: 5px; }
+  .home-pill { padding: 5px 9px; font-size: 11.5px; }
+  /* 品牌名与操作组都允许收缩，溢出由内部裁切而非撑宽页面 */
+  .home-topbar > a { min-width: 0; overflow: hidden; }
+  .home-user { display: none; }   /* 用户名在窄屏无信息量，登录后于「我的行程」内可见 */
+}
+
+/* ---------- 欢迎区 ---------- */
+.home-hero { text-align: center; }
+
+/* 标题行：logo 与「你好，我是小T」同一行、垂直居中。
+   中文字形有下伸部，单纯 align-items:center 会让 logo 视觉偏高，
+   故整体上移 1px 做光学对齐（optical alignment）。 */
+.home-hero-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.home-hero-titlebar .home-hero-logo { margin-bottom: 1px; }
+
+/* 吉祥物 logo：源图自带白边且**四边不对称**（实测 logo_square.png 1024px：
+   左 6.2% / 右 6.2% / 上 1.8% / 下 2.8%），若用 object-fit:cover 或统一
+   border-radius 裁切，左右会留下比上下更宽的白边 —— 视觉上就是「不对称」。
+   解法：用 clip-path 按各边实测比例做非对称 inset，把白边精确切掉，
+   得到干净的圆角方章。阴影改用行程页同一套暖调 rgba(29,26,21,…)，
+   与卡片阴影成family。
+   （未改动图片文件本身，避免重新导出 PNG。） */
+.home-hero-logo {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 0;                 /* 圆角交给 clip-path，避免二次切边 */
+  clip-path: inset(1.8% 6.2% 2.8% 6.2% round 15px);
+  filter: drop-shadow(0 8px 22px rgba(29, 26, 21, .3));
+  transform: scale(1.04);           /* 裁切后略微放大，视觉尺寸与原设计接近 */
+}
+/* 顶栏下方留白较多，欢迎区上移并压缩顶部空白，
+   让 logo 与建议卡整体更靠上，视觉重心不悬在页面中下方。 */
+@media (min-width: 640px) {
+  .home-hero { padding-top: 4vh !important; }
+}
+
+/* 主标题：与行程页 .pj-hero-title 同族（宋体展示体），只是小一号。
+   底色换成暖白后不再需要 text-shadow —— 这是改背景换来的最直接收益。 */
+.home-hero-title {
+  font-family: "Songti SC", "Source Han Serif SC", "Noto Serif CJK SC", Georgia, serif;
+  font-size: 27px;
+  font-weight: 600;
+  color: var(--pj-ink);
+  letter-spacing: .02em;
+  margin: 0;
+}
+.home-hero-sub {
+  font-size: 13.5px;
+  color: var(--pj-ink-2);
+}
+
+/* 建议卡片：实色白 + 细边 + 双层阴影，与行程页 .pj-card 完全同构 */
+.home-sug {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 13px 15px;
+  background: #fff;
+  border: 1px solid var(--pj-line);
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(29, 26, 21, .04), 0 8px 24px -16px rgba(29, 26, 21, .18);
+  transition: transform .18s cubic-bezier(.22, 1, .36, 1), box-shadow .18s ease,
+              border-color .18s ease, background-color .18s ease;
+}
+.home-sug:hover {
+  transform: translateY(-2px);
+  background: #fffdf9;
+  border-color: #d8c9ae;
+  box-shadow: 0 2px 4px rgba(29, 26, 21, .06), 0 16px 32px -18px rgba(29, 26, 21, .26);
+}
+.home-sug-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--pj-ink);
+  margin-bottom: 4px;
+}
+.home-sug-icon { font-size: 15px; line-height: 1; }
+.home-sug-text { font-size: 12px; color: var(--pj-ink-2); line-height: 1.6; }
+
+/* ---------- 消息气泡 ---------- */
+/* 用户气泡：深墨实心（行程页 .pj-btn--primary 同色），取代旧紫色渐变 */
+.home-bubble-user {
+  background: var(--pj-ink);
+  color: #fdfbf6;
+  padding: 10px 15px;
+  border-radius: 16px 4px 16px 16px;
+  max-width: 85%;
+  font-size: 15px;
+  line-height: 1.65;
+  box-shadow: 0 6px 18px -10px rgba(29, 26, 21, .5);
+  overflow-wrap: anywhere;
+}
+.home-bubble-bot {
+  flex: 1 1 0%;
+  min-width: 0;
+  font-size: 15px;
+  line-height: 1.75;
+  padding: 12px 16px;
+  background: #fff;
+  border: 1px solid var(--pj-line);
+  border-radius: 4px 16px 16px 16px;
+  box-shadow: 0 1px 2px rgba(29, 26, 21, .04), 0 8px 24px -16px rgba(29, 26, 21, .16);
+  overflow-wrap: anywhere;
+}
+.home-avatar {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px -2px rgba(29, 26, 21, .35);
+  margin-top: 2px;
+}
+
+/* 圆形 logo 源图自带约 2.1% 均匀白边（实测 1024px：左22/右21/上22/下23），
+   直接 border-radius:50% 会切出一个「略小于图案内径」的圆，边缘发灰发脏。
+   用 clip-path 先按比例放大再切圆，保证圆边正好落在图案边缘上。
+   放在全局（不带 .home 前缀），行程页 / 分享页的顶栏 logo 同样受益。 */
+.home-round-logo {
+  border-radius: 0;
+  clip-path: circle(47.9% at 50% 50%);
+  transform: scale(1.045);
+}
+
+/* ---------- 行程卡片 ---------- */
+/* 结构与行程页 .pj-card / .pj-day-head 同构：卡片 + 头部分隔 + 暖调头底 */
+.home-plan {
+  background: #fff;
+  border: 1px solid var(--pj-line);
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(29, 26, 21, .04), 0 8px 24px -16px rgba(29, 26, 21, .18);
+  overflow: hidden;
+}
+.home-plan-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 16px;
+  background: linear-gradient(180deg, #fffdf9 0%, #fdfaf4 100%);
+  border-bottom: 1px solid var(--pj-line-2);
+}
+.home-plan-title { font-size: 15px; font-weight: 600; color: var(--pj-ink); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.home-plan-date {
+  font-family: "Songti SC", Georgia, serif;
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--pj-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.home-plan-meta { font-size: 12px; color: var(--pj-ink-2); margin-top: 3px; }
+/* 费用数字：琥珀 + 等宽数字，与行程页 .pj-ledger-v--accent 同规则 */
+.home-plan-cost {
+  color: var(--pj-amber);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.home-plan-body { padding: 12px 16px; }
+.home-plan-day { font-size: 13px; line-height: 1.75; color: var(--pj-ink-2); }
+/* 天次标签：借用行程页 .pj-day-num 的「宋体 + 墨底方章」语言，
+   但这里文本是「第N天」三字，尺寸按文字长度给，不复用固定 34px 方块。
+   实测三字内容宽≈29.4px + padding 12px = 41.4px，而实测盒宽仅 41px，
+   正好卡在临界点上「天」字被压扁、视觉上像断了行 → 必须 nowrap 锁住。
+   顺带把字与字之间的挤压感用极小字距修回来。 */
+.home-plan-day b {
+  display: inline-block;
+  font-family: "Songti SC", Georgia, serif;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.55;
+  color: #fff;
+  background: var(--pj-ink);
+  padding: 1px 6px;
+  border-radius: 5px;
+  margin-right: 7px;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+.home-plan-cta {
+  font-size: 12px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: var(--pj-amber);
+  color: #fff;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background-color .15s ease;
+}
+.home-plan-cta:hover { background: #a9681f; }
+
+/* ---------- 规划步骤 ---------- */
+/* 三态配色直接借用行程页令牌：琥珀=进行中 / 玉绿=完成 / 灰=待办 */
+.home-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  transition: background-color .2s ease, color .2s ease, border-color .2s ease;
+}
+.home-step[data-state="active"] {
+  background: var(--pj-amber-soft);
+  color: #a9681f;
+  border-color: rgba(192, 122, 44, .38);
+  animation: step-pulse 1.5s ease-in-out infinite;
+}
+.home-step[data-state="done"] {
+  background: var(--pj-jade-soft);
+  color: var(--pj-jade);
+  border-color: #bfe0d2;
+}
+.home-step[data-state="todo"] { background: rgba(29, 26, 21, .05); color: var(--pj-ink-3); }
+@keyframes step-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .62; }
+}
+
+/* ---------- 输入区 ---------- */
+/* 底部渐变从旧的冷紫白改为暖白纸色，向上完全透明，与底色无缝衔接 */
+.home-composer-wrap {
+  background: linear-gradient(to top, rgba(251, 248, 242, .96) 0%, rgba(251, 248, 242, .72) 55%, rgba(251, 248, 242, 0) 100%);
+  padding-top: 18px;
+}
+.home-composer {
+  background: #fff;
+  border: 1px solid var(--pj-line);
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(29, 26, 21, .04), 0 12px 28px -18px rgba(29, 26, 21, .22);
+  transition: border-color .18s ease, box-shadow .18s ease;
+}
+.home-composer:focus-within {
+  border-color: #d8c9ae;
+  box-shadow: 0 2px 4px rgba(29, 26, 21, .05), 0 16px 34px -20px rgba(29, 26, 21, .3);
+}
+.home-composer textarea {
+  display: block;
+  width: 100%;
+  padding: 13px 16px 4px;
+  background: transparent;
+  border: 0;
+  resize: none;
+  outline: none;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--pj-ink);
+  max-height: 10rem;
+}
+.home-composer textarea::placeholder { color: var(--pj-ink-3); }
+.home-composer-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 10px 9px 12px;
+}
+.home-attach {
+  display: grid;
+  place-items: center;
+  width: 34px; height: 34px;
+  border-radius: 10px;
+  color: var(--pj-ink-3);
+  cursor: pointer;
+  transition: background-color .15s ease, color .15s ease;
+}
+.home-attach:hover { background: var(--pj-amber-soft); color: #a9681f; }
+.home-hint { font-size: 11px; color: var(--pj-ink-3); padding-left: 5px; }
+.home-send {
+  display: grid;
+  place-items: center;
+  width: 34px; height: 34px;
+  border-radius: 10px;
+  background: var(--pj-ink);
+  color: #fdfbf6;
+  transition: background-color .15s ease, opacity .15s ease;
+}
+.home-send:hover:not(:disabled) { background: #322c24; }
+.home-send:disabled { background: #d9d5cc; color: #fff; cursor: default; }
+
+/* ==========================================================================
+   登录 / 注册页
+   ========================================================================== */
+.auth-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  overflow: auto;
+  /* 遮罩用暖白纸色而非冷紫白，与主页底色同一色温 */
+  background: rgba(251, 248, 242, .8);
+  backdrop-filter: blur(10px) saturate(1.2);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2);
+}
+.auth-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 60rem;
+  border-radius: 22px;
+  overflow: hidden;
+  /* 关键：原来 bg-white/80 + backdrop-blur-xl + shadow-lift + rounded-3xl
+     四个类都不生效，卡片是「裸」的 */
+  background: #fff;
+  border: 1px solid var(--pj-line);
+  box-shadow: 0 2px 6px rgba(29, 26, 21, .06), 0 32px 72px -28px rgba(29, 26, 21, .44);
+}
+@media (min-width: 768px) { .auth-card { flex-direction: row; } }
+
+/* 左侧品牌区：改成「地平线」构图 —— 天空在上、小熊站在地平线上、文案压在地平线之下，
+   彻底避免原先小熊与文案重叠。
+   配色由「冷蓝天空」调成「黄昏暖天」：与主页暖白纸底、行程页琥珀强调同一色温，
+   登录页才像同一个产品而不是另一张图。 */
+.auth-art {
+  position: relative;
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 30rem;
+  width: 42%;
+  background: linear-gradient(180deg, #f6e7d2 0%, #f4ece0 42%, #f6efe2 74%, #efe3cf 100%);
+}
+@media (min-width: 768px) { .auth-art { display: flex; } }
+.auth-art-sky {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 62%;
+  background:
+    radial-gradient(120px 60px at 74% 18%, rgba(255, 252, 244, .9) 0%, rgba(255, 252, 244, 0) 70%),
+    linear-gradient(180deg, #f0d3ae 0%, #f6e6d2 100%);
+}
+.auth-art-hill {
+  position: absolute;
+  left: -8%; right: -8%;
+  bottom: 26%;
+  height: 120px;
+  background: linear-gradient(180deg, #d9c9ad 0%, #c9b596 100%);
+  clip-path: polygon(0 62%, 14% 40%, 30% 58%, 46% 28%, 62% 52%, 78% 32%, 100% 56%, 100% 100%, 0 100%);
+}
+.auth-art-ground {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 27%;
+  background: linear-gradient(180deg, #e8d9bd 0%, #ddc9a5 100%);
+  border-top: 2px solid rgba(150, 128, 92, .3);
+}
+/* 小熊：站在地平线上，不再压文案 */
+.auth-buddy {
+  position: absolute;
+  left: 50%;
+  bottom: 22%;
+  transform: translateX(-50%);
+  height: 15rem;
+  width: auto;
+  object-fit: contain;
+  mix-blend-mode: multiply;
+  z-index: 2;
+}
+.auth-art-copy {
+  position: relative;
+  z-index: 3;
+  margin-top: auto;
+  padding: 20px 24px 24px;
+  background: linear-gradient(180deg, rgba(255, 253, 248, 0) 0%, rgba(255, 253, 248, .9) 26%);
+}
+.auth-art-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 7px;
+}
+.auth-art-name { font-size: 16px; font-weight: 600; color: var(--pj-ink); letter-spacing: .01em; }
+.auth-art-slogan { font-size: 12.5px; line-height: 1.75; color: var(--pj-ink-2); }
+
+/* 右侧表单区 */
+.auth-form-side {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 28px 30px;
+  background: #fff;
+}
+.auth-mobile-brand { text-align: center; margin-bottom: 22px; }
+/* 同一张非对称白边源图，复用 hero 的非对称裁切参数 */
+.auth-mobile-brand img {
+  width: 54px;
+  height: 54px;
+  object-fit: cover;
+  clip-path: inset(1.8% 6.2% 2.8% 6.2% round 13px);
+  filter: drop-shadow(0 6px 18px rgba(29, 26, 21, .3));
+}
+/* 移动端只显示「登录小T」，桌面端只显示「欢迎回来」——原先是靠
+   Tailwind 的 md:hidden / hidden md:block 切换，那两个类不存在，
+   导致两套标题在所有尺寸下同时显示。 */
+.auth-desktop-head { display: none; }
+@media (min-width: 768px) {
+  .auth-mobile-brand { display: none; }
+  .auth-desktop-head { display: block; }
+}
+.auth-title { font-size: 20px; font-weight: 700; color: var(--pj-ink); margin: 0 0 4px; }
+.auth-sub { font-size: 12.5px; color: var(--pj-ink-2); margin: 0 0 20px; line-height: 1.6; }
+.auth-form { display: flex; flex-direction: column; gap: 13px; }
+.auth-label { display: block; font-size: 11.5px; color: var(--pj-ink-2); margin-bottom: 5px; letter-spacing: .02em; }
+.auth-input {
+  display: block;
+  width: 100%;
+  padding: 10px 13px;
+  font-size: 14.5px;
+  color: var(--pj-ink);
+  background: #fdfcfa;
+  border: 1px solid var(--pj-line);
+  border-radius: 11px;
+  transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
+}
+.auth-input::placeholder { color: var(--pj-ink-3); }
+.auth-input:focus {
+  outline: none;
+  background: #fff;
+  border-color: #d8c9ae;
+  box-shadow: 0 0 0 3px rgba(192, 122, 44, .16);
+}
+.auth-submit {
+  display: block;
+  width: 100%;
+  padding: 11px 16px;
+  margin-top: 4px;
+  font-size: 14.5px;
+  font-weight: 500;
+  color: #fdfbf6;
+  background: var(--pj-ink);
+  border: 0;
+  border-radius: 11px;
+  cursor: pointer;
+  transition: background-color .15s ease, box-shadow .15s ease;
+}
+.auth-submit:hover:not(:disabled) { background: #322c24; box-shadow: 0 6px 18px -10px rgba(29, 26, 21, .6); }
+.auth-submit:disabled { opacity: .55; cursor: default; }
+.auth-alt { text-align: center; font-size: 12px; color: var(--pj-ink-2); }
+.auth-alt a { color: #a9681f; }
+.auth-msg { font-size: 12px; margin: 0; line-height: 1.5; }
+
+@media (prefers-reduced-motion: reduce) {
+  .home-sug, .home-composer, .home-step { transition: none; animation: none; }
 }

@@ -66,6 +66,43 @@ dev = [
 [project.scripts]
 travel-agent = "travel_agent.cli:main"
 
+# ==================== tiktoken 替身（绕过 WDAC 拦截） ====================
+# 背景：本机 Windows 应用程序控制策略（WDAC/AppLocker，错误码 4551）会拦截 tiktoken
+# 官方 wheel 内的原生扩展 `_tiktoken.cp313-*.pyd`，导致 ChatOpenAI 因模块级
+# `import tiktoken` 失败而使整个应用无法启动。
+#
+# 为何不能降级版本：支持 Python 3.13 的 tiktoken（>=0.8.0）全部为编译型 wheel，
+# 官方未提供纯 Python 发行版；0.7.0 及更早版本无 cp313 wheel，装不上。
+#
+# 为何需要它：全仓库检索确认业务代码只用 max_tokens（输出上限），
+# 从不调用 get_num_tokens_from_messages / encoding_for_model。
+# 本项目只是需要 tiktoken「可导入」。该策略按文件逐个判定，非全局禁止 .pyd
+# （同环境 pydantic_core / cryptography._rust / greenlet / lxml 均可正常加载）。
+#
+# 影响面：仅本机开发环境。CI 与生产（deploy/Dockerfile，走 uv sync）不受影响，
+# 那里可以正常安装官方 tiktoken。
+[tool.uv.sources]
+tiktoken = { path = "vendor/tiktoken_stub" }
+uuid-utils = { path = "vendor/uuid_utils_stub" }
+
+[tool.uv]
+# 传递依赖覆盖：langchain-openai 声明 tiktoken>=0.7.0,<1.0.0，
+# overrides 强制解析到上面的本地替身，避免官方 wheel 被下载安装。
+#
+# uuid-utils 同理：langchain-core 声明 uuid-utils<1.0,>=0.12.0，
+# langsmith 亦依赖它；两者都在模块级 `from uuid_utils.compat import uuid7`。
+override-dependencies = [
+    "tiktoken @ file:///${PROJECT_ROOT}/vendor/tiktoken_stub",
+    "uuid-utils @ file:///${PROJECT_ROOT}/vendor/uuid_utils_stub",
+]
+
+# 显式固化默认索引：本机原为环境级配置（uv.lock 曾全部指向阿里云镜像）。
+# 固化后 `uv lock` 不会因环境差异把索引切回官方 PyPI，避免国内安装变慢。
+[[tool.uv.index]]
+name = "aliyun"
+url = "https://mirrors.aliyun.com/pypi/simple/"
+default = true
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

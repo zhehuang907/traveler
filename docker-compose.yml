@@ -52,9 +52,10 @@ services:
       HOST: 0.0.0.0
       PORT: 8000
       DATABASE_URL: mysql+aiomysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}?charset=utf8mb4
-    # 单机 SQLite(checkpointer) + diskcache 均落盘 ./data，升级容器不丢会话与缓存
+    # 单机 SQLite(checkpointer) + diskcache 均落盘 /app/data（命名卷 app_data，首次挂载
+    # 继承镜像内 appuser 属主，非 root 用户可写；升级/重建容器不丢会话与缓存）
     volumes:
-      - ./data:/app/data
+      - app_data:/app/data
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -77,5 +78,6 @@ services:
 
 volumes:
   mysql_data:
+  app_data:
   caddy_data:
   caddy_config:

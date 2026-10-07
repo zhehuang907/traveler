@@ -150,7 +150,8 @@ server {
 | `plan` 退出码 1 / Web 对话报「结构化输出两次均失败」 | 模型连续两次结构化输出不合规；或单次生成超 `LLM_TIMEOUT`（长草稿高峰期实测 9-24s，若超时被误设为 10s 级会必然失败） | 查看日志中的校验错误回灌内容；确认 `LLM_TIMEOUT` 不低于 60s（默认 120s）；重试；必要时切 `LLM_MODEL` |
 | 行程回复里出现「未解决项」 | 校验-修订循环达到 `MAX_REVISE_LOOPS` 仍不合规 | 属预期的强制交付；按提示放宽预算/节奏或手动调整，必要时调大循环次数 |
 | 依赖冲突 | 手动 pip 装包污染环境 | 删除 `.venv` 后 `uv sync`（以 uv.lock 为准） |
-| doctor 对已安装包报 WARN「导入失败: 应用程序控制策略已阻止此文件」（Windows） | WDAC/AppLocker 拦截了 uv 独立分发 Python 的原生 `.pyd`（如 `_multiprocessing`、`_tiktoken`、lxml `sax`） | 改用受信任的系统解释器建 venv：`uv venv --python 3.13 --python-preference only-system` 后 `uv sync`；或请 IT 对该路径加白。doctor 对「已安装但导入失败」只报 WARN，不阻断启动 |
+| doctor 对已安装包报 WARN「导入失败: 应用程序控制策略已阻止此文件」（Windows） | WDAC/AppLocker拦截了 uv 独立分发 Python 的原生 `.pyd`（如 `_multiprocessing`、lxml `sax`） | 改用受信任的系统解释器建 venv：`uv venv --python 3.13 --python-preference only-system` 后 `uv sync`；或请 IT 对该路径加白。doctor 对「已安装但导入失败」只报 WARN，不阻断启动 |
+| 导入 `langchain_core` / `langsmith` 时报「DLL load failed while importing _uuid_utils」（Windows） | Smart App Control 按**文件内容哈希**拦截了 `uuid_utils` 官方 wheel 的原生扩展。实测同环境 276 个 `.pyd` 中仅此一个被拦，`pydantic_core` / `cryptography._rust` / `greenlet` / `lxml` 均正常 | **已内置替身，无需处理**：`pyproject.toml` 的 `override-dependencies` 把 `uuid-utils` 指向 `vendor/uuid_utils_stub`（纯 Python 实现，含 uuid1/3/4/5/6/7/8 与 `compat` 子包）。执行 `uv sync` 即生效。若 doctor 仍报该 WARN，说明 lock 未更新，跑 `uv lock && uv sync`。同类问题 `tiktoken` 已有替身（`vendor/tiktoken_stub`） |
 | 重启后会话丢失 | 误用内存 checkpointer / 数据卷未挂载 | 确认 `CHECKPOINT_DB` 路径持久、compose 挂载 `./data` |
 
 ## 7. 成本控制

@@ -8,10 +8,14 @@
   <script defer src="/static/vendor/alpine.min.js"></script>
   <script src="/static/vendor/marked.min.js"></script>
   <script src="/static/vendor/purify.min.js"></script>
-  <link rel="stylesheet" href="/static/css/app.css?v=4"/>
+  <link rel="stylesheet" href="/static/css/app.css?v=10"/>
   {% block head %}{% endblock %}
 </head>
-<body class="min-h-screen bg-gradient-to-br from-[#eef1f8] via-[#f7f6fb] to-[#fdf4f6] text-ink-900 font-sans antialiased">
+<!-- body 底色改为暖白纸色（与行程页 / 分享页一致）。
+     原先的 from-[#eef1f8] via-[#f7f6fb] to-[#fdf4f6] 是冷紫蓝渐变，
+     和行程页的暖白 + 琥珀完全是两个色系；各页容器虽各自设了背景，
+     但登录遮罩未铺满时或滚动过界仍会露出它。 -->
+<body class="min-h-screen text-ink-900 font-sans antialiased" style="background:#fbf8f2">
   {% block body %}{% endblock %}
   <script src="/static/js/app.js?v=3"></script>
   {% block scripts %}{% endblock %}

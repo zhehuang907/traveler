@@ -163,7 +163,9 @@ make doctor     # 环境自检
 - **登录后"我的行程"是空的？** 属正常：本设计**只留存生成成功的旅程**，chitchat / 开放问答不会留下记录。去和小T多轮对话生成行程后即出现。
 - **报「登录状态无效 / 已过期」？** Session Cookie 默认 7 天过期；重新登录即可。
 - **报「Table 'travel_agent.xxx' doesn't exist」？** 未执行建表，按上文第 4 步运行 `uv run python scripts/init_db.py`。若库不存在，先建库（见第 1 步）。
-- **启动时报「应用程序控制策略已阻止此文件 (os error 4551)」？** 这是 Windows 应用控制策略拦截了 `.venv` 中的 `uvicorn.exe`，改用 `uv run python -m uvicorn travel_agent.main:app --reload` 启动即可（详见上文「启动操作指南」）。
+- **启动时报「应用程序控制策略已阻止此文件 (os error 4551)」？** 有两种情况：
+  1. 拦的是 `.venv` 中的 `uvicorn.exe`（控制台 shim）—— 改用 `uv run python -m uvicorn travel_agent.main:app --reload` 启动即可（详见上文「启动操作指南」）。
+  2. 拦的是某个包的原生扩展（如 `uuid_utils` 的 `_uuid_utils.cp313-*.pyd`）—— 本项目已内置纯 Python 替身，`uv sync` 后自动生效，**无需任何手工处理**。已内置替身的包：`tiktoken`（`_tiktoken`）、`uuid-utils`（`_uuid_utils`）。源码见 `vendor/`。
 - **必须用 DeepSeek 吗？** 不必。任何 OpenAI 兼容服务（通义千问、智谱 GLM、Moonshot、OpenAI）改 `LLM_BASE_URL` / `LLM_MODEL` 即可。
 - **为什么不用 Vue/React？** 服务端渲染 + Alpine.js 足以覆盖交互，保持纯 Python 技术栈、部署即静态文件；未来确有复杂 SPA 需求时再迁移（见 docs/ARCHITECTURE.md ADR-002）。
 

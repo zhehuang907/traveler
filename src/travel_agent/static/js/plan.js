@@ -36,8 +36,110 @@ function planApp(planId) {
     lastWarnings: [],
     message: null,
 
+    hotelData: null,
+    hotelLoading: false,
+    hotelError: null,
+    hotelTravelers: 1,
+
     _map: null,   // 路线 SVG 容器（renderMap 用）
     _chart: null,
+    // 地图视图模式：'real' = Leaflet 真实底图（看位置/导航）；'sketch' = 手绘示意图（看顺序方位）
+    mapView: 'real',
+
+    // 折叠的天（存 day_index）。load() 结束时按默认规则初始化。
+    // 编辑态强制全部展开（否则会改不到被折叠那天的条目）。
+    collapsed: [],
+
+    /* ---------- 天次折叠 ---------- */
+
+    /** 首次进入时的默认状态：首日展开、末日展开、其余折叠。 */
+    _defaultCollapsed(days) {
+      if (!days || days.length <= 2) return [];
+      // 末日通常是返程/离开日，信息量小；只保留首末日可见
+      return days.slice(1, -1).map((d) => d.day_index);
+    },
+
+    isDayOpen(dayIndex) {
+      // 编辑态强制展开：否则被折叠那天的条目根本点不到。
+      // 注意本方法必须保持「纯读」——它会在渲染中被高频调用，
+      // 若在此处懒初始化 collapsed 会触发 Alpine 的反复更新。
+      if (this.editing) return true;
+      return !this.collapsed.includes(dayIndex);
+    },
+
+    toggleDay(dayIndex) {
+      const i = this.collapsed.indexOf(dayIndex);
+      if (i >= 0) this.collapsed.splice(i, 1);
+      else this.collapsed.push(dayIndex);
+    },
+
+    allCollapsed() {
+      return !this._days().some((d) => this.isDayOpen(d.day_index));
+    },
+
+    toggleAllDays() {
+      const days = this._days();
+      if (!days.length) return;
+      if (this.allCollapsed()) this.collapsed = [];
+      else this.collapsed = days.map((d) => d.day_index);
+    },
+
+    _days() {
+      if (this.editing && this.draft) return this.draft.days || [];
+      return (this.plan && this.plan.days) || [];
+    },
+
+    /**
+     * 计划被整体替换（AI 优化 / 回滚）后天次编号可能变化，
+     * 丢弃已不存在的 day_index，避免折叠态指向"幽灵天次"。
+     */
+    _pruneCollapsed() {
+      const valid = new Set((this.plan.days || []).map((d) => d.day_index));
+      this.collapsed = this.collapsed.filter((i) => valid.has(i));
+    },
+
+    dayCount() {
+      return this._days().length;
+    },
+
+    itemCount() {
+      return this._days().reduce((sum, d) => sum + ((d.items || []).length), 0);
+    },
+
+    /** 折叠态下的一天摘要：「09:00 外滩观景台 · 11:00 …」。 */
+    daySummary(day) {
+      const items = (day.items || []).filter((i) => (i.title || '').trim());
+      if (!items.length) return '';
+      return items
+        .map((i) => `${i.start_time ? i.start_time.slice(0, 5) + ' ' : ''}${i.title}`)
+        .join(' · ');
+    },
+
+    _WEEKDAYS: ['周日', '周一', '周二', '周三', '周四', '周五', '周六'],
+
+    weekdayOf(dateStr) {
+      if (!dateStr) return '';
+      const d = new Date(`${String(dateStr).slice(0, 10)}T00:00:00`);
+      return Number.isNaN(d.getTime()) ? '' : this._WEEKDAYS[d.getDay()];
+    },
+
+    /** 预算余额：负数时标红（超支）。 */
+    budgetLeft() {
+      if (!this.plan || !this.plan.budget_cny) return 0;
+      return this.plan.budget_cny - this.plan.total_cost_cny;
+    },
+
+    budgetStyle() {
+      if (!this.plan || !this.plan.budget_cny) return '';
+      return this.budgetLeft() < 0 ? 'color: #a83c2f' : 'color: var(--pj-jade)';
+    },
+
+    /** 三档徽标配色（内联 style，因 tailwind 是预编译产物，无这三档色）。 */
+    tierBadge(tier) {
+      if (tier === 'value') return 'background: var(--pj-jade-soft); color: var(--pj-jade);';
+      if (tier === 'comfort') return 'background: var(--pj-amber-soft); color: #90601f;';
+      return 'background: var(--pj-plum-soft); color: var(--pj-plum);';
+    },
 
     async init() {
       await this.load();
@@ -62,10 +164,62 @@ function planApp(planId) {
       } finally {
         this.loading = false;
       }
+      // 房型建议的人数默认取计划人数
+      if (this.plan && !this.hotelTravelers) this.hotelTravelers = this.plan.travelers;
+      // 折叠态在此处一次性初始化（保持 isDayOpen 为纯读函数）
+      this.collapsed = this._defaultCollapsed(this._days());
       this.$nextTick(() => {
         this._renderMap();
         this._renderChart();
       });
+    },
+
+    /* ---------- 住宿推荐 ---------- */
+
+    async loadHotels() {
+      if (this.hotelLoading) return;
+      this.hotelLoading = true;
+      this.hotelError = null;
+      try {
+        // 用分档端点：三档（性价比/轻奢/高奢）各给最优候选
+        const res = await fetch(
+          `/api/plan/${this.planId}/hotels/tiered?travelers=${encodeURIComponent(this.hotelTravelers || 1)}&per_tier=1`
+        );
+        if (!res.ok) {
+          let msg = '酒店数据获取失败';
+          try {
+            const body = await res.json();
+            if (body && body.error && body.error.message) msg = body.error.message;
+          } catch {
+            /* 响应体非 JSON 时用默认文案 */
+          }
+          this.hotelError = msg;
+          this.hotelData = null;
+          return;
+        }
+        this.hotelData = await res.json();
+      } catch {
+        this.hotelError = '网络错误，请稍后重试';
+        this.hotelData = null;
+      } finally {
+        this.hotelLoading = false;
+      }
+    },
+
+    get hotelMeta() {
+      if (!this.hotelData) return '';
+      return `${this.hotelData.city} · ${this.hotelData.travelers} 人 · ${this.hotelData.nights} 晚`;
+    },
+
+    roomLabel(type) {
+      return {
+        single: '单人间',
+        double: '大床房',
+        twin: '双床房',
+        triple: '三人房',
+        family: '家庭房',
+        suite: '套房',
+      }[type] || type;
     },
 
     /* ---------- 手动编辑 ---------- */
@@ -84,11 +238,17 @@ function planApp(planId) {
       this.draft = draft;
       this.editing = true;
       this.message = null;
+      // 编辑态 isDayOpen 恒为 true；保存前记下当前折叠态，退出时恢复，
+      // 这样「编辑 → 取消」不会把用户的展开状态重置掉。
+      this._collapsedBeforeEdit = this.collapsed.slice();
+      this.collapsed = [];
     },
 
     cancelEdit() {
       this.editing = false;
       this.draft = null;
+      this.collapsed = this._collapsedBeforeEdit || [];
+      this._collapsedBeforeEdit = null;
     },
 
     addItem(day) {
@@ -131,6 +291,10 @@ function planApp(planId) {
         this.plan = data.plan;
         this.editing = false;
         this.draft = null;
+        // 恢复编辑前的折叠态，再按新计划裁掉已不存在的天次
+        this.collapsed = this._collapsedBeforeEdit || [];
+        this._collapsedBeforeEdit = null;
+        this._pruneCollapsed();
         this.lastDiff = data.diff;
         this.lastWarnings = [];
         this.message = { type: 'ok', text: this._diffLineText(data.diff, `修改已保存为 v${data.plan_version}`) };
@@ -198,6 +362,7 @@ function planApp(planId) {
           return;
         }
         this.plan = data.plan;
+        this._pruneCollapsed();
         this.lastDiff = data.diff;
         this.lastWarnings = data.warnings || [];
         this.showOptimize = false;
@@ -227,6 +392,7 @@ function planApp(planId) {
       if (!res.ok) return;
       const data = await res.json();
       this.plan = data.plan;
+      this._pruneCollapsed();
       this.lastDiff = null;
       this.lastWarnings = [];
       this.message = { type: 'ok', text: `已回滚到 v${version}（写入为最新版本 v${data.plan_version}）` };
@@ -377,20 +543,47 @@ function planApp(planId) {
 
     /* ---------- 行程路线：Leaflet 真实地图（按经纬度定位，悬停显示地点名） ---------- */
 
-    _renderMap() {
-      if (!this.plan || !document.getElementById('route')) return;
-      const container = document.getElementById('route');
-      // 旧地图实例先销毁，避免重复初始化
+    /* ---------- 路线地图：真实底图 / 手绘示意图切换 ---------- */
+
+    toggleMapView() {
+      this.mapView = this.mapView === 'real' ? 'sketch' : 'real';
+      // 切换前必须销毁 Leaflet 实例：容器被 innerHTML 覆盖后，
+      // Leaflet 仍持有已脱离文档的 DOM，zoom/事件会错乱并抛错。
+      this._destroyMap();
+      this.$nextTick(() => this._renderMap());
+    },
+
+    _destroyMap() {
       if (this._map) {
-        this._map.remove();
+        try {
+          this._map.remove();
+        } catch {
+          /* 容器已被移除时 remove 可能抛错，忽略即可 */
+        }
         this._map = null;
       }
-      if (!window.L) {
-        container.innerHTML = '<div class="h-full grid place-items-center text-sm text-ink-400">地图组件未加载</div>';
-        return;
-      }
+      this._resetRouteContainer();
+    },
 
-      // 收集有经纬度的地方条目：跳过备注类、空标题、无坐标（真实位置定位）
+    /**
+     * 把 #route 复位成干净容器。
+     * 两个必须处理的残留（实测踩到）：
+     * 1. L.map() 不会清空容器原有 innerHTML —— 手绘 SVG 会留在 DOM 里，
+     *    只是被 Leaflet 的 pane（z-index 400+）盖住看不见，但节点/事件仍在；
+     * 2. Leaflet 初始化时加的 leaflet-* class 不会随 map.remove() 摘掉。
+     */
+    _resetRouteContainer() {
+      const container = document.getElementById('route');
+      if (!container) return null;
+      container.innerHTML = '';
+      container.className = Array.from(container.classList)
+        .filter((c) => !c.startsWith('leaflet-'))
+        .join(' ');
+      return container;
+    },
+
+    /** 收集有真实经纬度的地点；无坐标的条目无法上图，故跳过。 */
+    _collectSpots() {
       const spots = [];
       this.plan.days.forEach((day) => {
         (day.items || []).forEach((item) => {
@@ -408,6 +601,50 @@ function planApp(planId) {
           });
         });
       });
+      return spots;
+    },
+
+    _renderMap() {
+      if (!this.plan) return;
+      const container = this._resetRouteContainer();
+      if (!container) return;
+      this._map = null;
+      const legendHolder = document.getElementById('route-legend');
+      if (legendHolder) legendHolder.innerHTML = '';
+
+      if (this.mapView === 'sketch') {
+        this._renderSketch(container);
+      } else {
+        this._renderLeaflet(container);
+      }
+    },
+
+    /** 手绘示意图：SVG 静态渲染，无需依赖 Leaflet。 */
+    _renderSketch(container) {
+      if (!window.SketchMap) {
+        container.innerHTML =
+          '<div class="h-full grid place-items-center text-sm text-ink-400">示意图组件未加载</div>';
+        return;
+      }
+      const spots = this._collectSpots();
+      const days = [...new Set(spots.map((s) => s.day))].sort((a, b) => a - b);
+      container.innerHTML = window.SketchMap.renderSketchMap(spots, {
+        escape: (v) => this._escape(v),
+        categoryLabel: CATEGORY_LABEL,
+      });
+      // 图例放在容器下方
+      const legend = window.SketchMap.renderSketchLegend(days, CHART_COLORS);
+      const holder = document.getElementById('route-legend');
+      if (holder) holder.innerHTML = legend;
+    },
+
+    _renderLeaflet(container) {
+      if (!window.L) {
+        container.innerHTML =
+          '<div class="h-full grid place-items-center text-sm text-ink-400">地图组件未加载</div>';
+        return;
+      }
+      const spots = this._collectSpots();
 
       if (spots.length === 0) {
         container.innerHTML = (

@@ -51,8 +51,8 @@ docker compose ps         # 确认 mysql healthy、app running、caddy running
 ```
 
 启动顺序由依赖控制：`mysql`（健康检查通过）→ `migrate`（一次性跑
-`alembic upgrade head`）→ `app` → `caddy`。数据库与对话数据分别落在
-`mysql_data`、`./data` 卷中，`docker compose up -d --build` 升级不丢数据。
+`alembic upgrade head`）→ `app` → `caddy`。业务数据落在 `mysql_data` 卷，
+会话与缓存落在 `app_data` 命名卷，`docker compose up -d --build` 升级不丢数据。
 
 ## 5. 验证与维护
 
@@ -67,6 +67,8 @@ docker compose build --build-arg INSTALL_CHROMIUM=1  # 如需 PDF 导出（镜�
 
 ## 注意事项
 
-- 仅支持单实例部署（SQLite checkpointer + diskcache 落在本地卷，扩容副本会冲突）
+- 仅支持单实例部署（SQLite checkpointer + diskcache 落在 `app_data` 本地卷，扩容副本会冲突）
 - 密码建议纯字母数字，避免特殊字符破坏 MySQL 连接串
-- 二次部署前若误删 `mysql_data` 卷会丢库，备份：`docker compose exec mysql sh -c 'exec mysqldump -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' > backup.sql`
+- 二次部署前若误删 `mysql_data`/`app_data` 卷会丢数据。备份：
+  数据库：`docker compose exec mysql sh -c 'exec mysqldump -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' > backup.sql`
+  会话/缓存：`docker compose exec app tar czf - /app/data > data_backup_$(date +%F).tar.gz`
